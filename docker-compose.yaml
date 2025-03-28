@@ -1,11 +1,17 @@
 services:
-  postgres:
-    image: postgres:17
-    container_name: rzw-flow-postgres
+  mysql8:
+    image: mysql:8.0
+    restart: always
+    command:
+      #      - 加入参数，设置 binlog 和主节点
+      - --default_authentication_plugin=caching_sha2_password
+      - --binlog-format=ROW
+      - --server-id=1
     environment:
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: root
     volumes:
-      - ./script/postgres/:/docker-entrypoint-initdb.d/
+      #      设置初始化脚本
+      - ./script/mysql/:/docker-entrypoint-initdb.d/
     ports:
-      - "15432:5432"
+      #      注意这里我映射为了 13316 端口
+      - "13316:3306"
