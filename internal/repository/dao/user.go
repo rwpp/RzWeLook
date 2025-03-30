@@ -54,9 +54,9 @@ func (dao *GormUserDAO) Insert(ctx context.Context, u User) error {
 }
 
 type User struct {
-	Id       int64  `gorm:"primaryKey,autoIncrement"`
-	Email    string `gorm:"unique"`
-	Phone    string `gorm:"unique"`
+	Id    int64  `gorm:"primaryKey,autoIncrement"`
+	Email string `gorm:"unique"`
+	//Phone    string `gorm:"unique"`
 	Password string
 	//创建时间
 	Ctime int64
