@@ -3,8 +3,14 @@ package main
 import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/redis"
+	"github.com/gin-contrib/sessions/memstore"
+	"github.com/rwpp/RzWeLook/config"
+	"github.com/rwpp/RzWeLook/internal/repository/cache"
+	"github.com/rwpp/RzWeLook/internal/service/sms/memory"
+
+	//"github.com/gin-contrib/sessions/redis"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"github.com/rwpp/RzWeLook/internal/repository"
 	"github.com/rwpp/RzWeLook/internal/repository/dao"
 	"github.com/rwpp/RzWeLook/internal/service"
@@ -13,54 +19,59 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"log"
+	"strings"
+	"time"
 )
 
 func main() {
-	log.Println("Starting application...")
 	connStr := "root:root@tcp(localhost:13316)/welook"
 	db, err := gorm.Open(mysql.Open(connStr))
 	if err != nil {
-
 		panic(err)
 	}
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
 	// 创建新表
 	err = dao.InitTable(db)
 	ud := dao.NewUserDAO(db)
-	repo := repository.NewUserRepository(ud)
+	uc := cache.NewUserCache(redisClient)
+	repo := repository.NewUserRepository(ud, uc)
 	svc := service.NewUserService(repo)
-	u := web.NewUserHandler(svc)
+	codeCache := cache.NewCodeCache(redisClient)
+	codeRepo := repository.NewCodeRepository(codeCache)
+	smsSvc := memory.NewService()
+	codeSvc := service.NewCodeService(codeRepo, smsSvc)
+	u := web.NewUserHandler(svc, codeSvc)
 	server := gin.Default()
-	// 配置CORS
-	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{"http://localhost:3000", "http://localhost:8080"}
-	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
-	config.ExposeHeaders = []string{"x-jwt-token"}
-	config.AllowHeaders = []string{"Content-Type", "Authorization"}
-	config.AllowCredentials = true
-	server.Use(cors.New(config))
-	// 注册路由
-	//store := cookie.NewStore([]byte("secret"))
-	//store := memstore.NewStore([]byte("soiccWYEPOhb5sR4LLs6OnUT3Gf45JL1"),
-	//[]byte("NtgEPQxuMoH3aCLuQW2NaAy3FoL3tveW"))
-
-	store, err := redis.NewStore(16,
-		"tcp", "localhost:6379", "",
-		[]byte("NtgEPQxuMoH3aCLuQW2NaAy3FoL3tveW"),
+	//server.Use(ratelimit.NewBuilder(redisClient, time.Second, 100).Build())
+	server.Use(cors.New(cors.Config{
+		AllowHeaders:     []string{"Content-Type", "Authorization"},
+		ExposeHeaders:    []string{"X-Jwt-Token", "x-refresh-token"},
+		AllowCredentials: true,
+		AllowOriginFunc: func(origin string) bool {
+			if strings.HasPrefix(origin, "http://localhost") {
+				return true
+			}
+			return strings.Contains(origin, "yourcompany.com")
+		},
+		MaxAge: 12 * time.Hour,
+	}))
+	store := memstore.NewStore([]byte("NtgEPQxuMoH3aCLuQW2NaAy3FoL3tveW"),
 		[]byte("soiccWYEPOhb5sR4LLs6OnUT3Gf45JL1"))
 	if err != nil {
 		panic(err)
 	}
 	server.Use(sessions.Sessions("mysession", store))
-
-	//server.Use(middleware.NewLoginMiddlewareBuilder().
-	//	//IgnorePaths("/users/login").
-	//	//IgnorePaths("users/signup").
-	//	Build())
-	server.Use(middleware.NewLoginJWTMiddlewareBuilder().
-		IgnorePaths("/users/login").
-		IgnorePaths("/users/signup").
-		Build())
+	server.Use(middleware.NewLoginJWTMiddlewareBuilder().Build())
 	u.RegisterRoutes(server)
 	log.Println("Server starting on :8080")
 	server.Run(":8080")
+}
+func initDB() (*gorm.DB, error) {
+	db, err := gorm.Open(mysql.Open(config.Config.DB.DSN))
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
 }

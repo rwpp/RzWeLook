@@ -3,9 +3,10 @@ package repository
 import (
 	"context"
 	"errors"
+
 	"github.com/rwpp/RzWeLook/internal/domain"
+	"github.com/rwpp/RzWeLook/internal/repository/cache"
 	"github.com/rwpp/RzWeLook/internal/repository/dao"
-	"log"
 )
 
 var (
@@ -16,16 +17,42 @@ var (
 type UserRepository interface {
 	Create(ctx context.Context, u domain.User) error
 	FindByEmail(ctx context.Context, email string) (domain.User, error)
+	FindById(ctx context.Context, id int64) (domain.User, error)
 }
 
-func NewUserRepository(dao dao.UserDAO) UserRepository {
+func NewUserRepository(dao dao.UserDAO, cache cache.UserCacheInterface) UserRepository {
 	return &userRepository{
-		dao: dao,
+		dao:   dao,
+		cache: cache,
 	}
 }
 
 type userRepository struct {
-	dao dao.UserDAO
+	dao   dao.UserDAO
+	cache cache.UserCacheInterface
+}
+
+func (r *userRepository) FindById(ctx context.Context, id int64) (domain.User, error) {
+	u, err := r.cache.Get(ctx, id)
+	if err == nil {
+		return u, nil
+	}
+	ue, err := r.dao.FindById(ctx, id)
+	if err != nil {
+		return domain.User{}, err
+	}
+	u = domain.User{
+		Id:       ue.Id,
+		Email:    ue.Email,
+		Password: ue.Password,
+	}
+	go func() {
+		err = r.cache.Set(ctx, u)
+		if err != nil {
+			//return domain.User{}, err
+		}
+	}()
+	return u, err
 }
 
 func (r *userRepository) FindByEmail(ctx context.Context, email string) (domain.User, error) {
@@ -41,20 +68,15 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (domain.
 }
 
 func (r *userRepository) Create(ctx context.Context, u domain.User) error {
-	log.Printf("Repository: Creating user with email: %s", u.Email)
 	if r.dao == nil {
-		log.Println("Repository: DAO is nil")
 		return errors.New("DAO is not initialized")
 	}
-
 	err := r.dao.Insert(ctx, dao.User{
 		Email:    u.Email,
 		Password: u.Password,
 	})
 	if err != nil {
-		log.Printf("Repository: Failed to create user: %v", err)
 		return err
 	}
-	log.Println("Repository: User created successfully")
 	return nil
 }

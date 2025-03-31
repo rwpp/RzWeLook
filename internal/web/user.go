@@ -3,23 +3,26 @@ package web
 import (
 	"errors"
 	"fmt"
+	"log"
+	"net/http"
+	"time"
+
 	regexp "github.com/dlclark/regexp2"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/rwpp/RzWeLook/internal/domain"
 	"github.com/rwpp/RzWeLook/internal/service"
-	"log"
-	"net/http"
 )
 
 type UserHandler struct {
 	emailExp    *regexp.Regexp
 	passwordExp *regexp.Regexp
 	svc         service.UserService
+	codeSvc     service.CodeServiceInterface
 }
 
-func NewUserHandler(svc service.UserService) *UserHandler {
+func NewUserHandler(svc service.UserService, codeSvc service.CodeServiceInterface) *UserHandler {
 	const (
 		emailRegexPattern    = "^\\w+([-+.]\\w+)*@\\w+([-.]\\w+)*\\.\\w+([-.]\\w+)*$"
 		passwordRegexPattern = `^(?=.*[A-Za-z])(?=.*\d)(?=.*[$@$!%*#?&])[A-Za-z\d$@$!%*#?&]{8,}$`
@@ -40,6 +43,7 @@ func NewUserHandler(svc service.UserService) *UserHandler {
 		emailExp:    emailExp,
 		passwordExp: passwordExp,
 		svc:         svc,
+		codeSvc:     codeSvc,
 	}
 }
 
@@ -48,12 +52,35 @@ func (u *UserHandler) RegisterRoutes(server *gin.Engine) {
 	ug.POST("/signup", u.SignUp)
 	//ug.POST("/login", u.Login)
 	ug.POST("/login", u.LoginJWT)
+	ug.POST("/login_sms", u.LoginSMS)
+	ug.POST("/login_sms/code/send", u.SendLoginSMSCode)
+
 	ug.GET("/edit", u.Edit)
 	ug.GET("/logout", u.Logout)
-	ug.GET("/profile", u.Profile)
+	ug.GET("/profile", u.ProfileJWT)
+}
+func (u *UserHandler) SendLoginSMSCode(ctx *gin.Context) {
+	type SendLoginSMSCodeReq struct {
+		Phone string `json:"phone"`
+	}
+	var req SendLoginSMSCodeReq
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误"})
+		return
+	}
+	const biz = "login"
+	err := u.codeSvc.Send(ctx, biz, req.Phone)
+	if err != nil {
+		ctx.JSON(http.StatusOK, Result{
+			Code: 5,
+			Msg:  "系统错误"})
+	}
+	ctx.JSON(http.StatusOK, Result{
+		Msg: "发送成功",
+	})
+	return
 }
 func (u *UserHandler) SignUp(ctx *gin.Context) {
-
 	type SignUpReq struct {
 		Email           string `json:"email"`
 		ConfirmPassword string `json:"confirmPassword"`
@@ -135,20 +162,18 @@ func (u *UserHandler) Login(ctx *gin.Context) {
 }
 
 func (u *UserHandler) Profile(ctx *gin.Context) {
-	println("profile")
+	ctx.String(http.StatusOK, "用户信息")
+
 }
 func (u *UserHandler) Edit(ctx *gin.Context) {
 
 }
 func (u *UserHandler) Logout(ctx *gin.Context) {
-
 	sess := sessions.Default(ctx)
 	sess.Options(sessions.Options{MaxAge: -1})
 	sess.Save()
 	ctx.String(http.StatusOK, "注销成功")
-
 }
-
 func (u *UserHandler) LoginJWT(ctx *gin.Context) {
 	type LoginReq struct {
 		Email    string `json:"email"`
@@ -167,15 +192,45 @@ func (u *UserHandler) LoginJWT(ctx *gin.Context) {
 		ctx.String(http.StatusOK, "系统异常")
 		return
 	}
-	token := jwt.New(jwt.SigningMethodHS512)
+	claims := UserClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 30)),
+		},
+		Uid:       user.Id,
+		UserAgent: ctx.Request.UserAgent(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS512, claims)
 	tokenStr, err := token.SignedString([]byte("NtgEPQxuMoH3aCLuQW2NaAy3FoL3tveW"))
 	if err != nil {
 		ctx.String(http.StatusInternalServerError, "系统错误")
+		return
 	}
 	ctx.Header("x-jwt-token", tokenStr)
-
 	fmt.Println(user)
 	ctx.String(http.StatusOK, "登录成功")
 	return
+}
 
+func (u *UserHandler) ProfileJWT(ctx *gin.Context) {
+	c, ok := ctx.Get("claims")
+	if !ok {
+		ctx.String(http.StatusUnauthorized, "未授权123")
+		return
+	}
+	claims, ok := c.(*UserClaims)
+	if !ok {
+		ctx.String(http.StatusUnauthorized, "未授权4566")
+		return
+	}
+	println(claims.Uid)
+}
+
+func (u *UserHandler) LoginSMS(context *gin.Context) {
+
+}
+
+type UserClaims struct {
+	jwt.RegisteredClaims
+	Uid       int64
+	UserAgent string
 }
