@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/rwpp/RzWeLook/internal/domain"
 	"github.com/rwpp/RzWeLook/internal/repository/cache"
@@ -10,14 +12,15 @@ import (
 )
 
 var (
-	ErrUserDuplicateEmail = dao.ErrUserDuplicateEmail
-	ErrorUserNotFound     = dao.ErrUserNotFound
+	ErrUserDuplicate  = dao.ErrUserDuplicate
+	ErrorUserNotFound = dao.ErrUserNotFound
 )
 
 type UserRepository interface {
 	Create(ctx context.Context, u domain.User) error
 	FindByEmail(ctx context.Context, email string) (domain.User, error)
 	FindById(ctx context.Context, id int64) (domain.User, error)
+	FindByPhone(ctx context.Context, phone string) (domain.User, error)
 }
 
 func NewUserRepository(dao dao.UserDAO, cache cache.UserCacheInterface) UserRepository {
@@ -32,6 +35,14 @@ type userRepository struct {
 	cache cache.UserCacheInterface
 }
 
+func (r *userRepository) FindByPhone(ctx context.Context, phone string) (domain.User, error) {
+	u, err := r.dao.FindByPhone(ctx, phone)
+	if err != nil {
+		return domain.User{}, err
+	}
+	return r.entityToDomain(u), nil
+}
+
 func (r *userRepository) FindById(ctx context.Context, id int64) (domain.User, error) {
 	u, err := r.cache.Get(ctx, id)
 	if err == nil {
@@ -41,11 +52,7 @@ func (r *userRepository) FindById(ctx context.Context, id int64) (domain.User, e
 	if err != nil {
 		return domain.User{}, err
 	}
-	u = domain.User{
-		Id:       ue.Id,
-		Email:    ue.Email,
-		Password: ue.Password,
-	}
+	u = r.entityToDomain(ue)
 	go func() {
 		err = r.cache.Set(ctx, u)
 		if err != nil {
@@ -60,23 +67,40 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (domain.
 	if err != nil {
 		return domain.User{}, err
 	}
-	return domain.User{
-		Id:       u.Id,
-		Email:    u.Email,
-		Password: u.Password,
-	}, nil
+	return r.entityToDomain(u), nil
 }
 
 func (r *userRepository) Create(ctx context.Context, u domain.User) error {
 	if r.dao == nil {
 		return errors.New("DAO is not initialized")
 	}
-	err := r.dao.Insert(ctx, dao.User{
-		Email:    u.Email,
-		Password: u.Password,
-	})
+	err := r.dao.Insert(ctx, r.domainToEntity(u))
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+func (r *userRepository) domainToEntity(u domain.User) dao.User {
+	return dao.User{
+		Id: u.Id,
+		Email: sql.NullString{
+			String: u.Email,
+			Valid:  u.Email != ""},
+		Phone: sql.NullString{
+			String: u.Phone,
+			Valid:  u.Phone != ""},
+		Password: u.Password,
+		Ctime:    u.Ctime.UnixMilli(),
+	}
+}
+func (r *userRepository) entityToDomain(u dao.User) domain.User {
+	return domain.User{
+		Id:       u.Id,
+		Email:    u.Email.String,
+		Password: u.Password,
+		Phone:    u.Phone.String,
+		Ctime:    time.UnixMilli(u.Ctime),
+		Utime:    time.UnixMilli(u.Utime),
+	}
 }
