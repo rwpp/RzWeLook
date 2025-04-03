@@ -21,6 +21,8 @@ type UserRepository interface {
 	FindByEmail(ctx context.Context, email string) (domain.User, error)
 	FindById(ctx context.Context, id int64) (domain.User, error)
 	FindByPhone(ctx context.Context, phone string) (domain.User, error)
+	Update(ctx context.Context, u domain.User) error
+	FindByWechat(ctx context.Context, openID string) (domain.User, error)
 }
 
 func NewUserRepository(dao dao.UserDAO, cache cache.UserCacheInterface) UserRepository {
@@ -33,6 +35,22 @@ func NewUserRepository(dao dao.UserDAO, cache cache.UserCacheInterface) UserRepo
 type userRepository struct {
 	dao   dao.UserDAO
 	cache cache.UserCacheInterface
+}
+
+func (r *userRepository) FindByWechat(ctx context.Context, openID string) (domain.User, error) {
+	u, err := r.dao.FindByWechat(ctx, openID)
+	if err != nil {
+		return domain.User{}, err
+	}
+	return r.entityToDomain(u), nil
+}
+
+func (r *userRepository) Update(ctx context.Context, u domain.User) error {
+	err := r.dao.UpdateNonZeroFields(ctx, r.domainToEntity(u))
+	if err != nil {
+		return err
+	}
+	return r.cache.Delete(ctx, u.Id)
 }
 
 func (r *userRepository) FindByPhone(ctx context.Context, phone string) (domain.User, error) {
@@ -91,7 +109,15 @@ func (r *userRepository) domainToEntity(u domain.User) dao.User {
 			String: u.Phone,
 			Valid:  u.Phone != ""},
 		Password: u.Password,
-		Ctime:    u.Ctime.UnixMilli(),
+		WechatOpenID: sql.NullString{
+			String: u.WechatInfo.OpenID,
+			Valid:  u.WechatInfo.OpenID != "",
+		},
+		WechatUnionID: sql.NullString{
+			String: u.WechatInfo.UnionID,
+			Valid:  u.WechatInfo.UnionID != "",
+		},
+		Ctime: u.Ctime.UnixMilli(),
 	}
 }
 func (r *userRepository) entityToDomain(u dao.User) domain.User {
@@ -100,7 +126,11 @@ func (r *userRepository) entityToDomain(u dao.User) domain.User {
 		Email:    u.Email.String,
 		Password: u.Password,
 		Phone:    u.Phone.String,
-		Ctime:    time.UnixMilli(u.Ctime),
-		Utime:    time.UnixMilli(u.Utime),
+		WechatInfo: domain.WechatInfo{
+			UnionID: u.WechatUnionID.String,
+			OpenID:  u.WechatOpenID.String,
+		},
+		Ctime: time.UnixMilli(u.Ctime),
+		Utime: time.UnixMilli(u.Utime),
 	}
 }

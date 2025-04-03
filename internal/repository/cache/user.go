@@ -15,6 +15,7 @@ var ErrKeyNotExist = errors.New("key not exist")
 type UserCacheInterface interface {
 	Get(ctx context.Context, id int64) (domain.User, error)
 	Set(ctx context.Context, u domain.User) error
+	Delete(ctx context.Context, id int64) error
 }
 
 func NewUserCache(client redis.Cmdable) UserCacheInterface {
@@ -27,6 +28,10 @@ func NewUserCache(client redis.Cmdable) UserCacheInterface {
 type UserCache struct {
 	client     redis.Cmdable
 	expiration time.Duration
+}
+
+func (cache *UserCache) Delete(ctx context.Context, id int64) error {
+	return cache.client.Del(ctx, cache.key(id)).Err()
 }
 
 func (cache *UserCache) Get(ctx context.Context, id int64) (domain.User, error) {

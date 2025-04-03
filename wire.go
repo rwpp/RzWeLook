@@ -11,6 +11,7 @@ import (
 	"github.com/rwpp/RzWeLook/internal/repository/dao"
 	"github.com/rwpp/RzWeLook/internal/service"
 	"github.com/rwpp/RzWeLook/internal/web"
+	ijwt "github.com/rwpp/RzWeLook/internal/web/jwt"
 )
 
 func InitWebServer() *gin.Engine {
@@ -25,7 +26,11 @@ func InitWebServer() *gin.Engine {
 		service.NewUserService,
 		service.NewCodeService,
 		ioc.InitSMSService,
+		ioc.NewWechatHandler,
 		web.NewUserHandler,
+		web.NewOAuthWechatHandler,
+		ijwt.NewRedisJWTHandler,
+		ioc.InitOAuthWechatService,
 		ioc.InitWeb,
 		ioc.InitMiddleware,
 	)

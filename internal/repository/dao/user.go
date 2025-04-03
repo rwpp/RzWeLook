@@ -19,6 +19,8 @@ type UserDAO interface {
 	FindByEmail(ctx context.Context, email string) (User, error)
 	FindById(ctx context.Context, id int64) (User, error)
 	FindByPhone(ctx context.Context, phone string) (User, error)
+	UpdateNonZeroFields(ctx context.Context, u User) error
+	FindByWechat(ctx context.Context, openID string) (User, error)
 }
 
 func NewUserDAO(db *gorm.DB) UserDAO {
@@ -32,6 +34,21 @@ func NewUserDAO(db *gorm.DB) UserDAO {
 
 type GormUserDAO struct {
 	db *gorm.DB
+}
+
+func (dao *GormUserDAO) FindByWechat(ctx context.Context, openID string) (User, error) {
+	var u User
+	err := dao.db.WithContext(ctx).Where("wechat_open_id = ?", openID).First(&u).Error
+	return u, err
+}
+
+func (dao *GormUserDAO) UpdateNonZeroFields(ctx context.Context, u User) error {
+	// 这种写法是很不清晰的，因为它依赖了 gorm 的两个默认语义
+	// 会使用 ID 来作为 WHERE 条件
+	// 会使用非零值来更新
+	// 另外一种做法是显式指定只更新必要的字段，
+	// 那么这意味着 DAO 和 service 中非敏感字段语义耦合了
+	return dao.db.Updates(&u).Error
 }
 
 func (dao *GormUserDAO) FindByPhone(ctx context.Context, phone string) (User, error) {
@@ -71,9 +88,12 @@ func (dao *GormUserDAO) Insert(ctx context.Context, u User) error {
 type User struct {
 	Id int64 `gorm:"primaryKey,autoIncrement"`
 	//唯一索引允许有多个空值
-	Email    sql.NullString `gorm:"unique"`
-	Phone    sql.NullString `gorm:"unique"`
-	Password string
+	Email sql.NullString `gorm:"unique"`
+	Phone sql.NullString `gorm:"unique"`
+
+	WechatUnionID sql.NullString
+	WechatOpenID  sql.NullString `gorm:"unique"`
+	Password      string
 	//创建时间
 	Ctime int64
 	//更新时间

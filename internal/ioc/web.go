@@ -5,29 +5,31 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"github.com/rwpp/RzWeLook/internal/web"
+	ijwt "github.com/rwpp/RzWeLook/internal/web/jwt"
 	"github.com/rwpp/RzWeLook/internal/web/middleware"
-	"github.com/rwpp/RzWeLook/pkg/ginx/middlewares/ratelimit"
 	"strings"
 	"time"
 )
 
-func InitWeb(mdls []gin.HandlerFunc, userHdl *web.UserHandler) *gin.Engine {
+func InitWeb(mdls []gin.HandlerFunc, userHdl *web.UserHandler,
+	oauthWechatHdl *web.OAuthWechatHandler) *gin.Engine {
 	// 这里可以初始化web服务
 	// 比如使用gin框架
 	// 实际上什么都不做
 	server := gin.Default()
 	server.Use(mdls...)
 	userHdl.RegisterRoutes(server)
+	oauthWechatHdl.RegisterRoutes(server)
 	return server
 }
-func InitMiddleware(redisClient redis.Cmdable) []gin.HandlerFunc {
+func InitMiddleware(redisClient redis.Cmdable, jwtHdl ijwt.Handler) []gin.HandlerFunc {
 	// 这里可以初始化中间件
 	// 比如使用gin框架
 	// 实际上什么都不做
 	return []gin.HandlerFunc{
 		corsHdl(),
-		middleware.NewLoginJWTMiddlewareBuilder().Build(),
-		ratelimit.NewBuilder(redisClient, time.Second, 100).Build(),
+		middleware.NewLoginJWTMiddlewareBuilder(jwtHdl).Build(),
+		//ratelimit.NewBuilder(redisClient, time.Second, 100).Build(),
 	}
 }
 

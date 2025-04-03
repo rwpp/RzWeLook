@@ -3,19 +3,21 @@ package web
 import (
 	"errors"
 	"fmt"
-	"log"
-	"net/http"
-	"time"
-
 	regexp "github.com/dlclark/regexp2"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	jwt "github.com/golang-jwt/jwt/v5"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/redis/go-redis/v9"
 	"github.com/rwpp/RzWeLook/internal/domain"
 	"github.com/rwpp/RzWeLook/internal/service"
+	ijwt "github.com/rwpp/RzWeLook/internal/web/jwt"
+	"log"
+	"net/http"
+	"time"
 )
 
 const biz = "login"
+const userIdKey = "userId"
 
 var _ handler = &UserHandler{}
 
@@ -24,9 +26,12 @@ type UserHandler struct {
 	passwordExp *regexp.Regexp
 	svc         service.UserService
 	codeSvc     service.CodeServiceInterface
+	ijwt.Handler
+	cmd redis.Cmdable
 }
 
-func NewUserHandler(svc service.UserService, codeSvc service.CodeServiceInterface) *UserHandler {
+func NewUserHandler(svc service.UserService, codeSvc service.CodeServiceInterface,
+	jwtHdl ijwt.Handler) *UserHandler {
 	const (
 		emailRegexPattern    = "^\\w+([-+.]\\w+)*@\\w+([-.]\\w+)*\\.\\w+([-.]\\w+)*$"
 		passwordRegexPattern = `^(?=.*[A-Za-z])(?=.*\d)(?=.*[$@$!%*#?&])[A-Za-z\d$@$!%*#?&]{8,}$`
@@ -48,6 +53,7 @@ func NewUserHandler(svc service.UserService, codeSvc service.CodeServiceInterfac
 		passwordExp: passwordExp,
 		svc:         svc,
 		codeSvc:     codeSvc,
+		Handler:     jwtHdl,
 	}
 }
 
@@ -58,10 +64,38 @@ func (u *UserHandler) RegisterRoutes(server *gin.Engine) {
 	ug.POST("/login", u.LoginJWT)
 	ug.POST("/login_sms", u.LoginSMS)
 	ug.POST("/login_sms/code/send", u.SendLoginSMSCode)
-
-	ug.GET("/edit", u.Edit)
-	ug.GET("/logout", u.Logout)
+	ug.POST("/edit", u.Edit)
+	ug.POST("/logout", u.LogoutJWT)
 	ug.GET("/profile", u.ProfileJWT)
+	ug.GET("/refresh_token", u.RefreshToken)
+}
+
+func (u *UserHandler) RefreshToken(ctx *gin.Context) {
+
+	refreshToken := u.ExtractUser(ctx)
+	var rc ijwt.RefreshClaims
+	token, err := jwt.ParseWithClaims(refreshToken, &rc, func(token *jwt.Token) (interface{}, error) {
+		return ijwt.RtKey, nil
+	})
+	if err != nil || !token.Valid {
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+	err = u.CheckSession(ctx, rc.Ssid)
+	if err != nil {
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+	}
+	err = u.SetJWToken(ctx, rc.Uid, rc.Ssid)
+	if err != nil {
+		ctx.JSON(http.StatusOK, Result{
+			Code: 5,
+			Msg:  "系统错误",
+		})
+		return
+	}
+	ctx.JSON(http.StatusOK, Result{
+		Msg: "刷新成功",
+	})
 }
 func (u *UserHandler) SendLoginSMSCode(ctx *gin.Context) {
 	type SendLoginSMSCodeReq struct {
@@ -174,15 +208,81 @@ func (u *UserHandler) Login(ctx *gin.Context) {
 }
 
 func (u *UserHandler) Profile(ctx *gin.Context) {
-	ctx.String(http.StatusOK, "用户信息")
+	type Profile struct {
+		Email string `json:"email"`
+	}
+	sess := sessions.Default(ctx)
+	id := sess.Get(userIdKey).(int64)
+	ux, err := u.svc.Profile(ctx, id)
+	if err != nil {
+		ctx.JSON(http.StatusOK, Result{
+			Code: 1,
+			Msg:  "系统错误",
+		})
+		return
+	}
+	ctx.JSON(http.StatusOK, Profile{
+		Email: ux.Email,
+	})
 
 }
 func (u *UserHandler) Edit(ctx *gin.Context) {
-
+	type Req struct {
+		Nickname string `json:"nickname"`
+		Birthday string `json:"birthday"`
+		AboutMe  string `json:"about_me"`
+	}
+	var req Req
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		ctx.JSON(http.StatusOK, Result{
+			Code: 1,
+			Msg:  "请求参数错误",
+		})
+	}
+	if req.Nickname == "" {
+		ctx.JSON(http.StatusOK, Result{
+			Code: 4,
+			Msg:  "昵称不能为空",
+		})
+		return
+	}
+	if len(req.AboutMe) > 1024 {
+		ctx.JSON(http.StatusOK, Result{
+			Code: 5,
+			Msg:  "关于我的信息过长",
+		})
+		return
+	}
+	birthday, err := time.Parse(time.DateOnly, req.Birthday)
+	if err != nil {
+		ctx.JSON(http.StatusOK, Result{
+			Code: 6,
+			Msg:  "生日格式错误",
+		})
+		return
+	}
+	uc := ctx.MustGet("user").(*ijwt.UserClaims)
+	err = u.svc.UpdateNonSensitiveInfo(ctx, domain.User{
+		Id:       uc.Uid,
+		Nickname: req.Nickname,
+		Birthday: birthday,
+		AboutMe:  req.AboutMe,
+	})
+	if err != nil {
+		ctx.JSON(http.StatusOK, Result{
+			Code: 5,
+			Msg:  "系统错误",
+		})
+		return
+	}
+	ctx.JSON(http.StatusOK, Result{
+		Msg: "修改成功",
+	})
 }
 func (u *UserHandler) Logout(ctx *gin.Context) {
 	sess := sessions.Default(ctx)
-	sess.Options(sessions.Options{MaxAge: -1})
+	sess.Options(sessions.Options{
+		MaxAge: -1})
 	sess.Save()
 	ctx.String(http.StatusOK, "注销成功")
 }
@@ -204,7 +304,8 @@ func (u *UserHandler) LoginJWT(ctx *gin.Context) {
 		ctx.String(http.StatusOK, "系统异常")
 		return
 	}
-	if err = u.setJWToken(ctx, user.Id); err != nil {
+
+	if err = u.SetLoginToken(ctx, user.Id); err != nil {
 		ctx.String(http.StatusOK, "系统异常")
 		return
 	}
@@ -213,38 +314,33 @@ func (u *UserHandler) LoginJWT(ctx *gin.Context) {
 	return
 }
 
-func (u *UserHandler) setJWToken(ctx *gin.Context, uid int64) error {
-	claims := UserClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 30)),
-		},
-		Uid:       uid,
-		UserAgent: ctx.Request.UserAgent(),
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS512, claims)
-	tokenStr, err := token.SignedString([]byte("NtgEPQxuMoH3aCLuQW2NaAy3FoL3tveW"))
-	if err != nil {
-
-		return err
-	}
-	ctx.Header("x-jwt-token", tokenStr)
-	return nil
-}
-
 func (u *UserHandler) ProfileJWT(ctx *gin.Context) {
-	c, ok := ctx.Get("claims")
-	if !ok {
-		ctx.String(http.StatusUnauthorized, "未授权123")
-		return
+	type Profile struct {
+		Email    string `json:"email"`
+		Phone    string `json:"phone"`
+		Nickname string `json:"nickname"`
+		Birthday string `json:"birthday"`
+		AboutMe  string `json:"about_me"`
 	}
-	claims, ok := c.(*UserClaims)
-	if !ok {
-		ctx.String(http.StatusUnauthorized, "未授权4566")
-		return
-	}
-	println(claims.Uid)
-}
 
+	uc := ctx.MustGet("user").(*ijwt.UserClaims)
+	ux, err := u.svc.Profile(ctx, uc.Uid)
+	if err != nil {
+		ctx.JSON(http.StatusOK, Result{
+			Code: 1,
+			Msg:  "系统错误",
+		})
+		return
+	}
+	ctx.JSON(http.StatusOK, Profile{
+		Email:    ux.Email,
+		Phone:    ux.Phone,
+		Nickname: ux.Nickname,
+		Birthday: ux.Birthday.String(),
+		AboutMe:  ux.AboutMe,
+	})
+
+}
 func (u *UserHandler) LoginSMS(ctx *gin.Context) {
 	type Req struct {
 		Phone string `json:"phone"`
@@ -278,7 +374,8 @@ func (u *UserHandler) LoginSMS(ctx *gin.Context) {
 		})
 	}
 	//Todo: 这里需要根据手机号查询用户信息
-	if err = u.setJWToken(ctx, user.Id); err != nil {
+
+	if err = u.SetLoginToken(ctx, user.Id); err != nil {
 		ctx.JSON(http.StatusOK, Result{
 			Code: 5,
 			Msg:  "系统错误",
@@ -290,8 +387,16 @@ func (u *UserHandler) LoginSMS(ctx *gin.Context) {
 	})
 }
 
-type UserClaims struct {
-	jwt.RegisteredClaims
-	Uid       int64
-	UserAgent string
+func (u *UserHandler) LogoutJWT(ctx *gin.Context) {
+	err := u.ClearToken(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusOK, Result{
+			Code: 5,
+			Msg:  "退出登陆失败",
+		})
+		return
+	}
+	ctx.JSON(http.StatusOK, Result{
+		Msg: "退出登陆成功",
+	})
 }
