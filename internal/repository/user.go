@@ -109,26 +109,45 @@ func (r *userRepository) domainToEntity(u domain.User) dao.User {
 			String: u.Phone,
 			Valid:  u.Phone != ""},
 		Password: u.Password,
-		WechatOpenID: sql.NullString{
+		WechatOpenId: sql.NullString{
 			String: u.WechatInfo.OpenID,
 			Valid:  u.WechatInfo.OpenID != "",
 		},
-		WechatUnionID: sql.NullString{
+		WechatUnionId: sql.NullString{
 			String: u.WechatInfo.UnionID,
 			Valid:  u.WechatInfo.UnionID != "",
+		},
+		Birthday: sql.NullInt64{
+			Int64: u.Birthday.UnixMilli(),
+			Valid: !u.Birthday.IsZero(),
+		},
+		Nickname: sql.NullString{
+			String: u.Nickname,
+			Valid:  u.Nickname != "",
+		},
+		AboutMe: sql.NullString{
+			String: u.AboutMe,
+			Valid:  u.AboutMe != "",
 		},
 		Ctime: u.Ctime.UnixMilli(),
 	}
 }
 func (r *userRepository) entityToDomain(u dao.User) domain.User {
+	var birthday time.Time
+	if u.Birthday.Valid {
+		birthday = time.UnixMilli(u.Birthday.Int64)
+	}
 	return domain.User{
 		Id:       u.Id,
 		Email:    u.Email.String,
 		Password: u.Password,
 		Phone:    u.Phone.String,
+		Nickname: u.Nickname.String,
+		AboutMe:  u.AboutMe.String,
+		Birthday: birthday,
 		WechatInfo: domain.WechatInfo{
-			UnionID: u.WechatUnionID.String,
-			OpenID:  u.WechatOpenID.String,
+			UnionID: u.WechatUnionId.String,
+			OpenID:  u.WechatOpenId.String,
 		},
 		Ctime: time.UnixMilli(u.Ctime),
 		Utime: time.UnixMilli(u.Utime),

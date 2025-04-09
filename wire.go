@@ -3,8 +3,8 @@
 package main
 
 import (
-	"github.com/gin-gonic/gin"
 	"github.com/google/wire"
+	"github.com/rwpp/RzWeLook/internal/events/article"
 	"github.com/rwpp/RzWeLook/internal/ioc"
 	"github.com/rwpp/RzWeLook/internal/repository"
 	"github.com/rwpp/RzWeLook/internal/repository/cache"
@@ -14,25 +14,43 @@ import (
 	ijwt "github.com/rwpp/RzWeLook/internal/web/jwt"
 )
 
-func InitWebServer() *gin.Engine {
+func InitApp() *App {
 	wire.Build(
 		ioc.InitDB,
 		ioc.InitRedis,
+		ioc.InitLogger,
+		ioc.InitKafka,
+		ioc.NewConsumers,
+		ioc.NewSyncProducer,
+
+		article.NewInteractiveReadEventConsumer,
+		article.NewKafkaProducer,
+
 		dao.NewUserDAO,
+		dao.NewGORMArticleDAO,
+		dao.NewGORMInteractiveDAO,
+		cache.NewRedisInteractiveCache,
 		cache.NewUserCache,
+		cache.NewRedisArticleCache,
 		cache.NewCodeCache,
 		repository.NewCodeRepository,
 		repository.NewUserRepository,
+		repository.NewArticleRepository,
+		repository.NewCachedInteractiveRepository,
 		service.NewUserService,
 		service.NewCodeService,
+		service.NewArticleService,
+		service.NewInteractiveService,
 		ioc.InitSMSService,
 		ioc.NewWechatHandler,
 		web.NewUserHandler,
+		web.NewArticleHandler,
 		web.NewOAuthWechatHandler,
 		ijwt.NewRedisJWTHandler,
 		ioc.InitOAuthWechatService,
 		ioc.InitWeb,
 		ioc.InitMiddleware,
+		wire.Struct(new(App), "*"),
 	)
-	return new(gin.Engine)
+	return new(App)
 }

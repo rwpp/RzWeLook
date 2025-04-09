@@ -11,6 +11,8 @@ import (
 	"github.com/rwpp/RzWeLook/internal/domain"
 	"github.com/rwpp/RzWeLook/internal/service"
 	ijwt "github.com/rwpp/RzWeLook/internal/web/jwt"
+	"github.com/rwpp/RzWeLook/pkg/ginx"
+	"github.com/rwpp/RzWeLook/pkg/logger"
 	"log"
 	"net/http"
 	"time"
@@ -28,10 +30,12 @@ type UserHandler struct {
 	codeSvc     service.CodeServiceInterface
 	ijwt.Handler
 	cmd redis.Cmdable
+	l   logger.LoggerV1
 }
 
 func NewUserHandler(svc service.UserService, codeSvc service.CodeServiceInterface,
-	jwtHdl ijwt.Handler) *UserHandler {
+	jwtHdl ijwt.Handler,
+	l logger.LoggerV1) *UserHandler {
 	const (
 		emailRegexPattern    = "^\\w+([-+.]\\w+)*@\\w+([-.]\\w+)*\\.\\w+([-.]\\w+)*$"
 		passwordRegexPattern = `^(?=.*[A-Za-z])(?=.*\d)(?=.*[$@$!%*#?&])[A-Za-z\d$@$!%*#?&]{8,}$`
@@ -54,6 +58,7 @@ func NewUserHandler(svc service.UserService, codeSvc service.CodeServiceInterfac
 		svc:         svc,
 		codeSvc:     codeSvc,
 		Handler:     jwtHdl,
+		l:           l,
 	}
 }
 
@@ -62,7 +67,8 @@ func (u *UserHandler) RegisterRoutes(server *gin.Engine) {
 	ug.POST("/signup", u.SignUp)
 	//ug.POST("/login", u.Login)
 	ug.POST("/login", u.LoginJWT)
-	ug.POST("/login_sms", u.LoginSMS)
+	ug.POST("/login_sms",
+		ginx.WrapBody[LoginSMSReq](u.l.With(logger.String("method", "login_sms")), u.LoginSMS))
 	ug.POST("/login_sms/code/send", u.SendLoginSMSCode)
 	ug.POST("/edit", u.Edit)
 	ug.POST("/logout", u.LogoutJWT)
@@ -261,7 +267,7 @@ func (u *UserHandler) Edit(ctx *gin.Context) {
 		})
 		return
 	}
-	uc := ctx.MustGet("user").(*ijwt.UserClaims)
+	uc := ctx.MustGet("user").(ijwt.UserClaims)
 	err = u.svc.UpdateNonSensitiveInfo(ctx, domain.User{
 		Id:       uc.Uid,
 		Nickname: req.Nickname,
@@ -341,30 +347,19 @@ func (u *UserHandler) ProfileJWT(ctx *gin.Context) {
 	})
 
 }
-func (u *UserHandler) LoginSMS(ctx *gin.Context) {
-	type Req struct {
-		Phone string `json:"phone"`
-		Code  string `json:"code"`
-	}
-	var req Req
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误"})
-		return
-	}
+
+type LoginSMSReq struct {
+	Phone string `json:"phone"`
+	Code  string `json:"code"`
+}
+
+func (u *UserHandler) LoginSMS(ctx *gin.Context, req LoginSMSReq) (ginx.Result, error) {
 	ok, err := u.codeSvc.Verify(ctx, biz, req.Phone, req.Code)
 	if err != nil {
-		ctx.JSON(http.StatusOK, Result{
-			Code: 5,
-			Msg:  "系统错误",
-		})
-		return
+		return Result{Code: 5, Msg: "系统异常"}, err
 	}
 	if !ok {
-		ctx.JSON(http.StatusOK, Result{
-			Code: 4,
-			Msg:  "验证码错误",
-		})
-		return
+		return Result{Code: 5, Msg: "验证码错误"}, nil
 	}
 	user, err := u.svc.FindOrCreate(ctx, req.Phone)
 	if err != nil {
@@ -376,15 +371,9 @@ func (u *UserHandler) LoginSMS(ctx *gin.Context) {
 	//Todo: 这里需要根据手机号查询用户信息
 
 	if err = u.SetLoginToken(ctx, user.Id); err != nil {
-		ctx.JSON(http.StatusOK, Result{
-			Code: 5,
-			Msg:  "系统错误",
-		})
-		return
+		return Result{Code: 5, Msg: "系统异常"}, err
 	}
-	ctx.JSON(http.StatusOK, Result{
-		Msg: "验证码校验通过",
-	})
+	return Result{Msg: "登录成功"}, nil
 }
 
 func (u *UserHandler) LogoutJWT(ctx *gin.Context) {

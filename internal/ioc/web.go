@@ -12,7 +12,7 @@ import (
 )
 
 func InitWeb(mdls []gin.HandlerFunc, userHdl *web.UserHandler,
-	oauthWechatHdl *web.OAuthWechatHandler) *gin.Engine {
+	oauthWechatHdl *web.OAuthWechatHandler, artHdl *web.ArticleHandler) *gin.Engine {
 	// 这里可以初始化web服务
 	// 比如使用gin框架
 	// 实际上什么都不做
@@ -20,6 +20,7 @@ func InitWeb(mdls []gin.HandlerFunc, userHdl *web.UserHandler,
 	server.Use(mdls...)
 	userHdl.RegisterRoutes(server)
 	oauthWechatHdl.RegisterRoutes(server)
+	artHdl.RegisterRoutes(server)
 	return server
 }
 func InitMiddleware(redisClient redis.Cmdable, jwtHdl ijwt.Handler) []gin.HandlerFunc {

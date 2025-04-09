@@ -87,15 +87,36 @@ func (dao *GormUserDAO) Insert(ctx context.Context, u User) error {
 
 type User struct {
 	Id int64 `gorm:"primaryKey,autoIncrement"`
-	//唯一索引允许有多个空值
-	Email sql.NullString `gorm:"unique"`
+	// 设置为唯一索引
+	Email    sql.NullString `gorm:"unique"`
+	Password string
+
+	//Phone *string
 	Phone sql.NullString `gorm:"unique"`
 
-	WechatUnionID sql.NullString
-	WechatOpenID  sql.NullString `gorm:"unique"`
-	Password      string
-	//创建时间
+	// 这三个字段表达为 sql.NullXXX 的意思，
+	// 就是希望使用的人直到，这些字段在数据库中是可以为 NULL 的
+	// 这种做法好处是看到这个定义就知道数据库中可以为 NULL，坏处就是用起来没那么方便
+	// 大部分公司不推荐使用 NULL 的列
+	// 所以你也可以直接使用 string, int64，那么对应的意思是零值就是每填写
+	// 这种做法的好处是用起来好用，但是看代码的话要小心空字符串的问题
+	// 生日。一样是毫秒数
+	Birthday sql.NullInt64
+	// 昵称
+	Nickname sql.NullString
+	// 自我介绍
+	// 指定是 varchar 这个类型，并且长度是 1024
+	// 因此你可以看到在 web 里面有这个校验
+	AboutMe sql.NullString `gorm:"type:varchar(1024)"`
+
+	// 微信有关数据。有些公司会尝试把这些数据分离出去做一个单独的表
+	// 从而避免这个表有过多的列，但是暂时来说
+	// 我们还没到这个地步
+	WechatOpenId  sql.NullString `gorm:"type:varchar(256);unique"`
+	WechatUnionId sql.NullString `gorm:"type:varchar(256)"`
+
+	// 创建时间
 	Ctime int64
-	//更新时间
+	// 更新时间
 	Utime int64
 }
