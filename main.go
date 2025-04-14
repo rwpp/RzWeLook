@@ -2,12 +2,15 @@ package main
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/viper"
 	"net/http"
 )
 
 func main() {
 	initViper()
+	initPrometheus()
+
 	app := InitApp()
 	for _, c := range app.consumers {
 		err := c.Start()
@@ -31,5 +34,13 @@ func initViper() {
 	if err != nil {
 		panic(err)
 	}
+
+}
+
+func initPrometheus() {
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		http.ListenAndServe(":8081", nil)
+	}()
 
 }

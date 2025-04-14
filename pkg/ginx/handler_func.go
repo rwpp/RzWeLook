@@ -2,7 +2,6 @@ package ginx
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rwpp/RzWeLook/pkg/logger"
 	"net/http"
 	"strconv"
@@ -12,12 +11,6 @@ import (
 var log logger.LoggerV1 = logger.NewNoOpLogger()
 
 // 包变量导致我们这个地方的代码非常垃圾
-var vector *prometheus.CounterVec
-
-func InitCounter(opt prometheus.CounterOpts) {
-	vector = prometheus.NewCounterVec(opt, []string{"code"})
-	prometheus.MustRegister(vector)
-}
 
 func SetLogger(l logger.LoggerV1) {
 	log = l

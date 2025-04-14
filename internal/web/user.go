@@ -168,7 +168,7 @@ func (u *UserHandler) SignUp(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{"error": "密码格式错误"})
 		return
 	}
-	err = u.svc.SignUp(ctx, domain.User{
+	err = u.svc.SignUp(ctx.Request.Context(), domain.User{
 		Email:    req.Email,
 		Password: req.Password,
 	})

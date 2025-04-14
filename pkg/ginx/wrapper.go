@@ -3,11 +3,21 @@ package ginx
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rwpp/RzWeLook/pkg/logger"
 	"net/http"
+	"strconv"
 )
 
 var L logger.LoggerV1
+
+var vector *prometheus.CounterVec
+
+func InitCounter(opt prometheus.CounterOpts) {
+	vector = prometheus.NewCounterVec(opt,
+		[]string{"code"})
+	prometheus.MustRegister(vector)
+}
 
 func WrapToken[C jwt.Claims](fn func(ctx *gin.Context, uc C) (Result, error)) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
@@ -23,8 +33,8 @@ func WrapToken[C jwt.Claims](fn func(ctx *gin.Context, uc C) (Result, error)) gi
 			return
 		}
 		res, err := fn(ctx, c)
-		if err != nil {
 
+		if err != nil {
 			L.Error("业务处理逻辑错误",
 				logger.String("path", ctx.Request.URL.Path),
 				logger.String("route", ctx.FullPath()),
@@ -32,6 +42,7 @@ func WrapToken[C jwt.Claims](fn func(ctx *gin.Context, uc C) (Result, error)) gi
 				logger.Error(err))
 
 		}
+		vector.WithLabelValues(strconv.Itoa(res.Code)).Inc()
 		ctx.JSON(http.StatusOK, res)
 	}
 }

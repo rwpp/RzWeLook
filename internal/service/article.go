@@ -15,8 +15,7 @@ type ArticleService interface {
 	Publish(ctx context.Context, art domain.Article) (int64, error)
 	Withdraw(ctx context.Context, art domain.Article) error
 	PublishV1(ctx context.Context, art domain.Article) (int64, error)
-	List(ctx context.Context, author int64,
-		offset, limit int) ([]domain.Article, error)
+	List(ctx context.Context, author int64, offset, limit int) ([]domain.Article, error)
 	GetById(ctx context.Context, id int64) (domain.Article, error)
 
 	// 剩下的这个是给读者用的服务，暂时放到这里
@@ -26,7 +25,8 @@ type ArticleService interface {
 	// 单体应用下可以混在一起，毕竟现在也没几个方法
 	GetPublishedById(ctx context.Context, id, uid int64) (domain.Article, error)
 	// ListPub 根据更新时间来分页，更新时间必须小于 startTime
-	ListPub(ctx context.Context, startTime time.Time, offset, limit int) ([]domain.Article, error)
+	ListPub(ctx context.Context, startTime time.Time,
+		offset, limit int) ([]domain.Article, error)
 }
 
 type articleService struct {

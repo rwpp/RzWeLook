@@ -23,6 +23,15 @@ type InteractiveRepository interface {
 	GetByIds(ctx context.Context, biz string, ids []int64) ([]domain.Interactive, error)
 }
 
+func NewCachedInteractiveRepository(dao dao.InteractiveDAO,
+	cache cache.InteractiveCache, l logger.LoggerV1) InteractiveRepository {
+	return &CachedReadCntRepository{
+		dao:   dao,
+		cache: cache,
+		l:     l,
+	}
+}
+
 type CachedReadCntRepository struct {
 	cache cache.InteractiveCache
 	dao   dao.InteractiveDAO
@@ -142,14 +151,5 @@ func (c *CachedReadCntRepository) toDomain(intr dao.Interactive) domain.Interact
 		LikeCnt:    intr.LikeCnt,
 		CollectCnt: intr.CollectCnt,
 		ReadCnt:    intr.ReadCnt,
-	}
-}
-
-func NewCachedInteractiveRepository(dao dao.InteractiveDAO,
-	cache cache.InteractiveCache, l logger.LoggerV1) InteractiveRepository {
-	return &CachedReadCntRepository{
-		dao:   dao,
-		cache: cache,
-		l:     l,
 	}
 }

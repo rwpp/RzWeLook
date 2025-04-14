@@ -3,10 +3,15 @@ package ioc
 import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
 	"github.com/rwpp/RzWeLook/internal/web"
 	ijwt "github.com/rwpp/RzWeLook/internal/web/jwt"
 	"github.com/rwpp/RzWeLook/internal/web/middleware"
+	"github.com/rwpp/RzWeLook/pkg/ginx"
+	"github.com/rwpp/RzWeLook/pkg/ginx/metric"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+
 	"strings"
 	"time"
 )
@@ -27,8 +32,22 @@ func InitMiddleware(redisClient redis.Cmdable, jwtHdl ijwt.Handler) []gin.Handle
 	// 这里可以初始化中间件
 	// 比如使用gin框架
 	// 实际上什么都不做
+	ginx.InitCounter(prometheus.CounterOpts{
+		Namespace: "RzWeLook",
+		Subsystem: "web",
+		Name:      "http_biz_code",
+		Help:      "http业务错误码",
+	})
 	return []gin.HandlerFunc{
 		corsHdl(),
+		(&metric.MiddlewareBuilder{
+			Namespace:  "RzWeLook",
+			Subsystem:  "web",
+			Name:       "gin_http",
+			Help:       "gin http request",
+			InstanceId: "my-instance-1",
+		}).Build(),
+		otelgin.Middleware("RzWeLook"),
 		middleware.NewLoginJWTMiddlewareBuilder(jwtHdl).Build(),
 		//ratelimit.NewBuilder(redisClient, time.Second, 100).Build(),
 	}
