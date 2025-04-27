@@ -51,10 +51,11 @@ func (repo *CachedArticleRepository) ListPub(ctx context.Context, utime time.Tim
 	if err != nil {
 		return nil, err
 	}
-	return slice.Map[dao.PublishedArticle, domain.Article](val, func(idx int, src dao.PublishedArticle) domain.Article {
-		// 偷懒写法
-		return repo.ToDomain(dao.Article(src))
-	}), nil
+	return slice.Map[dao.PublishedArticle, domain.Article](val,
+		func(idx int, src dao.PublishedArticle) domain.Article {
+			// 偷懒写法
+			return repo.ToDomain(dao.Article(src))
+		}), nil
 }
 
 func NewArticleRepository(dao dao.ArticleDAO, c cache.ArticleCache, l logger.LoggerV1, userRepo UserRepository,

@@ -4,7 +4,7 @@ local cntKey = key .. ":cnt"
 -- 预期中的验证码
 local expectedCode = ARGV[1]
 
-local cnt = tonumber(redis.call("get", cntKey))
+local cnt = tonumber(eedis.call("get", cntKey))
 local code = redis.call("get", key)
 -- 验证次数已经耗尽了
 if cnt <= 0 then

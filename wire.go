@@ -14,6 +14,11 @@ import (
 	ijwt "github.com/rwpp/RzWeLook/internal/web/jwt"
 )
 
+var rankingServiceSet = wire.NewSet(
+	repository.NewRankingRepository,
+	cache.NewRankingCache,
+	service.NewRankingService)
+
 func InitApp() *App {
 	wire.Build(
 		ioc.InitDB,
@@ -22,6 +27,9 @@ func InitApp() *App {
 		ioc.InitKafka,
 		ioc.NewConsumers,
 		ioc.NewSyncProducer,
+		rankingServiceSet,
+		ioc.InitJobs,
+		ioc.InitRankingJob,
 
 		article.NewInteractiveReadEventConsumer,
 		article.NewKafkaProducer,

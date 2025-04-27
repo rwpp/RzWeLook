@@ -4,26 +4,29 @@ import (
 	"context"
 	"github.com/ecodeclub/ekit/queue"
 	"github.com/ecodeclub/ekit/slice"
+	"github.com/rwpp/RzWeLook/internal/repository"
 	"math"
 	"time"
 
 	"github.com/rwpp/RzWeLook/internal/domain"
-	"log"
 )
 
 type RankingService interface {
 	TopN(ctx context.Context) error
 }
 
-func NewBatchRankingService(artSvc ArticleService,
-	intr InteractiveService) RankingService {
+func NewRankingService(artSvc ArticleService,
+	intr InteractiveService,
+	repo repository.RankingRepository) RankingService {
 	return &BatchRankingService{
 		artSvc:    artSvc,
 		intr:      intr,
 		batchSize: 100,
 		n:         100,
+		repo:      repo,
 		scoreFunc: func(t time.Time, likeCnt int64) float64 {
-			return float64(likeCnt-1) / math.Pow(float64(likeCnt+2), 1.5)
+			sec := time.Since(t).Seconds()
+			return float64(likeCnt-1) / math.Pow(float64(sec+2), 1.5)
 		},
 	}
 }
@@ -31,6 +34,7 @@ func NewBatchRankingService(artSvc ArticleService,
 type BatchRankingService struct {
 	artSvc    ArticleService
 	intr      InteractiveService
+	repo      repository.RankingRepository
 	batchSize int
 	n         int
 	scoreFunc func(t time.Time, likeCnt int64) float64
@@ -41,8 +45,8 @@ func (svc *BatchRankingService) TopN(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	log.Println(arts)
-	return nil
+
+	return svc.repo.ReplaceTopN(ctx, arts)
 }
 func (svc *BatchRankingService) topN(ctx context.Context) ([]domain.Article, error) {
 	now := time.Now()
@@ -75,9 +79,6 @@ func (svc *BatchRankingService) topN(ctx context.Context) ([]domain.Article, err
 		}
 		for _, art := range arts {
 			intr := intrs[art.Id]
-			//if !ok {
-			//	continue
-			//}
 			score := svc.scoreFunc(art.Utime, intr.LikeCnt)
 			err = topN.Enqueue(Score{
 				art:   art,
@@ -95,7 +96,7 @@ func (svc *BatchRankingService) topN(ctx context.Context) ([]domain.Article, err
 				}
 			}
 		}
-		if len(arts) < svc.batchSize {
+		if len(arts) < svc.batchSize || now.Sub(arts[len(arts)-1].Utime).Hours() > 7*24 {
 			break
 		}
 		offset = offset + len(arts)
