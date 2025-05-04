@@ -328,8 +328,8 @@ func (u *UserHandler) ProfileJWT(ctx *gin.Context) {
 		Birthday string `json:"birthday"`
 		AboutMe  string `json:"about_me"`
 	}
-
-	uc := ctx.MustGet("user").(*ijwt.UserClaims)
+	//ToDo 可能key不对
+	uc := ctx.MustGet("users").(ijwt.UserClaims)
 	ux, err := u.svc.Profile(ctx, uc.Uid)
 	if err != nil {
 		ctx.JSON(http.StatusOK, Result{

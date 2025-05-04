@@ -38,8 +38,8 @@ func (j *LoginJWTMiddlewareBuilder) Build() gin.HandlerFunc {
 		// Authorization 头部
 		// 得到的格式 Bearer token
 		tokenStr := j.ExtractUser(ctx)
-		claims := &ijwt.UserClaims{}
-		token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
+		claims := ijwt.UserClaims{}
+		token, err := jwt.ParseWithClaims(tokenStr, &claims, func(token *jwt.Token) (interface{}, error) {
 			return []byte("NtgEPQxuMoH3aCLuQW2NaAy3FoL3tveW"), nil
 		})
 		if err != nil {
@@ -58,6 +58,6 @@ func (j *LoginJWTMiddlewareBuilder) Build() gin.HandlerFunc {
 			ctx.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
-		ctx.Set("claims", claims)
+		ctx.Set("users", claims)
 	}
 }

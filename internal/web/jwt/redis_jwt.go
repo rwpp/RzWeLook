@@ -53,10 +53,11 @@ func (j *RedisJWTHandler) SetLoginToken(ctx *gin.Context, uid int64) error {
 	return err
 }
 
+// 可能要改key
 func (j *RedisJWTHandler) ClearToken(ctx *gin.Context) error {
 	ctx.Header("x-jwt-token", "")
 	ctx.Header("x-refresh-token", "")
-	claims := ctx.MustGet("claims").(*UserClaims)
+	claims := ctx.MustGet("users").(UserClaims)
 	return j.cmd.Set(ctx, fmt.Sprintf("users:ssid:%s", claims.Ssid),
 		"", time.Hour*24*7).Err()
 }

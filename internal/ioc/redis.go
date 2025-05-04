@@ -13,7 +13,7 @@ func InitRedis() redis.Cmdable {
 	})
 	return redisClient
 }
+
 func InitRLockClient(cmd redis.Cmdable) *rlock.Client {
 	return rlock.NewClient(cmd)
-
 }

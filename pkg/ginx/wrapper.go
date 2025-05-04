@@ -21,7 +21,6 @@ func InitCounter(opt prometheus.CounterOpts) {
 
 func WrapToken[C jwt.Claims](fn func(ctx *gin.Context, uc C) (Result, error)) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-
 		val, ok := ctx.Get("users")
 		if !ok {
 			ctx.AbortWithStatus(http.StatusUnauthorized)
@@ -70,9 +69,7 @@ func WrapBodyAndToken[Req any, C jwt.Claims](fn func(ctx *gin.Context, req Req, 
 			L.Error("业务处理逻辑错误",
 				logger.String("path", ctx.Request.URL.Path),
 				logger.String("route", ctx.FullPath()),
-
 				logger.Error(err))
-
 		}
 		ctx.JSON(http.StatusOK, res)
 	}

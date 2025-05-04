@@ -80,7 +80,7 @@ func newCallbacks() *Callbacks {
 			0.99:  0.001,
 			0.999: 0.0001,
 		},
-	}, []string{"type", "table", "sql"})
+	}, []string{"type", "table"})
 	pcb := &Callbacks{
 		vector: vector,
 	}

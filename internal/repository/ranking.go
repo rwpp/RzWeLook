@@ -11,7 +11,7 @@ type RankingRepository interface {
 	GetTopN(ctx context.Context) ([]domain.Article, error)
 }
 
-func NewRankingRepository(redis *cache.RankingRedisCached,
+func NewRankingRepository(redis cache.RankingCache,
 	local *cache.RankingLocalCache) RankingRepository {
 	return &CachedRankingRepository{
 		redis: redis,
@@ -20,7 +20,7 @@ func NewRankingRepository(redis *cache.RankingRedisCached,
 }
 
 type CachedRankingRepository struct {
-	redis *cache.RankingRedisCached
+	redis cache.RankingCache
 	local *cache.RankingLocalCache
 }
 

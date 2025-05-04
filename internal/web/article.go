@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/ecodeclub/ekit/slice"
 	"github.com/gin-gonic/gin"
+	intrv1 "github.com/rwpp/RzWeLook/api/proto/gen/intr/v1"
 	"github.com/rwpp/RzWeLook/internal/domain"
 	"github.com/rwpp/RzWeLook/internal/service"
 	"github.com/rwpp/RzWeLook/internal/web/jwt"
@@ -19,12 +20,12 @@ var _ handler = (*ArticleHandler)(nil)
 
 type ArticleHandler struct {
 	svc     service.ArticleService
-	intrSvc service.InteractiveService
+	intrSvc intrv1.InteractiveServiceClient
 	l       logger.LoggerV1
 	biz     string
 }
 
-func NewArticleHandler(svc service.ArticleService, intrSvc service.InteractiveService, l logger.LoggerV1) *ArticleHandler {
+func NewArticleHandler(svc service.ArticleService, intrSvc intrv1.InteractiveServiceClient, l logger.LoggerV1) *ArticleHandler {
 	return &ArticleHandler{
 		svc: svc,
 		l:   l,
@@ -66,7 +67,7 @@ func (a *ArticleHandler) Withdraw(ctx *gin.Context) {
 		a.l.Error("反序列化请求失败", logger.Error(err))
 		return
 	}
-	usr, ok := ctx.MustGet("user").(jwt.UserClaims)
+	usr, ok := ctx.MustGet("users").(jwt.UserClaims)
 	if !ok {
 		ctx.JSON(http.StatusOK, Result{
 			Code: 5,
@@ -147,7 +148,7 @@ func (a *ArticleHandler) Detail(ctx *gin.Context) {
 		a.l.Error("前端输入的 ID 不对", logger.Error(err))
 		return
 	}
-	usr, ok := ctx.MustGet("user").(jwt.UserClaims)
+	usr, ok := ctx.MustGet("users").(jwt.UserClaims)
 	if !ok {
 		ctx.JSON(http.StatusOK, Result{
 			Code: 5,
@@ -200,7 +201,7 @@ func (a *ArticleHandler) Publish(ctx *gin.Context) {
 		a.l.Error("反序列化请求失败", logger.Error(err))
 		return
 	}
-	usr, ok := ctx.MustGet("user").(jwt.UserClaims)
+	usr, ok := ctx.MustGet("users").(jwt.UserClaims)
 	if !ok {
 		ctx.JSON(http.StatusOK, Result{
 			Code: 5,
@@ -230,7 +231,7 @@ func (a *ArticleHandler) Edit(ctx *gin.Context) {
 		a.l.Error("反序列化请求失败", logger.Error(err))
 		return
 	}
-	usr, ok := ctx.MustGet("user").(jwt.UserClaims)
+	usr, ok := ctx.MustGet("users").(jwt.UserClaims)
 	if !ok {
 		ctx.JSON(http.StatusOK, Result{
 			Code: 5,
@@ -266,9 +267,9 @@ func (a *ArticleHandler) PubDetail(ctx *gin.Context, usr jwt.UserClaims) (ginx.R
 	}
 	// 使用 error group 来同时查询数据
 	var (
-		eg   errgroup.Group
-		art  domain.Article
-		intr domain.Interactive
+		eg          errgroup.Group
+		art         domain.Article
+		getResponse *intrv1.GetResponse
 	)
 	eg.Go(func() error {
 		art, err = a.svc.GetPublishedById(ctx, id, usr.Uid)
@@ -283,7 +284,11 @@ func (a *ArticleHandler) PubDetail(ctx *gin.Context, usr jwt.UserClaims) (ginx.R
 
 	eg.Go(func() error {
 		var er error
-		intr, er = a.intrSvc.Get(ctx, a.biz, id, usr.Uid)
+		getResponse, er = a.intrSvc.Get(ctx, &intrv1.GetRequest{
+			Biz:   a.biz,
+			BizId: id,
+			Uid:   usr.Uid,
+		})
 		return er
 	})
 	err = eg.Wait()
@@ -295,14 +300,17 @@ func (a *ArticleHandler) PubDetail(ctx *gin.Context, usr jwt.UserClaims) (ginx.R
 	}
 	// 直接异步操作，在确定我们获取到了数据之后再来操作
 	go func() {
-		er := a.intrSvc.IncrReadCnt(ctx, a.biz, art.Id)
+		_, er := a.intrSvc.IncrReadCnt(ctx, &intrv1.IncrReadCntRequest{
+			Biz:   a.biz,
+			BizId: art.Id,
+		})
 		if er != nil {
 			a.l.Error("增加文章阅读数失败",
 				logger.Error(err))
 		}
 	}()
 	//art := art.GetArticle()
-	//intr := intrResp.Intr
+	intr := getResponse.Intr
 	return ginx.Result{
 		Data: ArticleVo{
 			Id:      art.Id,
@@ -325,9 +333,17 @@ func (a *ArticleHandler) PubDetail(ctx *gin.Context, usr jwt.UserClaims) (ginx.R
 func (a *ArticleHandler) Like(ctx *gin.Context, req LikeReq, uc jwt.UserClaims) (ginx.Result, error) {
 	var err error
 	if req.Like {
-		err = a.intrSvc.Like(ctx, a.biz, req.Id, uc.Uid)
+		_, err = a.intrSvc.Like(ctx, &intrv1.LikeRequest{
+			Biz:   a.biz,
+			BizId: req.Id,
+			Uid:   uc.Uid,
+		})
 	} else {
-		err = a.intrSvc.CancelLike(ctx, a.biz, req.Id, uc.Uid)
+		_, err = a.intrSvc.CancelLike(ctx, &intrv1.CancelLikeRequest{
+			Biz:   a.biz,
+			BizId: req.Id,
+			Uid:   uc.Uid,
+		})
 	}
 
 	if err != nil {
@@ -377,7 +393,12 @@ func (a *ArticleHandler) Like(ctx *gin.Context, req LikeReq, uc jwt.UserClaims) 
 
 func (a *ArticleHandler) Collect(ctx *gin.Context, req CollectReq,
 	uc jwt.UserClaims) (Result, error) {
-	err := a.intrSvc.Collect(ctx, a.biz, req.Id, uc.Uid, req.Cid)
+	_, err := a.intrSvc.Collect(ctx, &intrv1.CollectRequest{
+		Biz:   a.biz,
+		BizId: req.Id,
+		Cid:   req.Cid,
+		Uid:   uc.Uid,
+	})
 	if err != nil {
 		return Result{
 			Code: 5,

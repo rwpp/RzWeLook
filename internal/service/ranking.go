@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"github.com/ecodeclub/ekit/queue"
 	"github.com/ecodeclub/ekit/slice"
+	intrv1 "github.com/rwpp/RzWeLook/api/proto/gen/intr/v1"
 	"github.com/rwpp/RzWeLook/internal/repository"
 	"math"
 	"time"
@@ -16,7 +18,7 @@ type RankingService interface {
 }
 
 func NewRankingService(artSvc ArticleService,
-	intr InteractiveService,
+	intr intrv1.InteractiveServiceClient,
 	repo repository.RankingRepository) RankingService {
 	return &BatchRankingService{
 		artSvc:    artSvc,
@@ -33,7 +35,7 @@ func NewRankingService(artSvc ArticleService,
 
 type BatchRankingService struct {
 	artSvc    ArticleService
-	intr      InteractiveService
+	intr      intrv1.InteractiveServiceClient
 	repo      repository.RankingRepository
 	batchSize int
 	n         int
@@ -45,7 +47,6 @@ func (svc *BatchRankingService) TopN(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
 	return svc.repo.ReplaceTopN(ctx, arts)
 }
 func (svc *BatchRankingService) topN(ctx context.Context) ([]domain.Article, error) {
@@ -73,12 +74,18 @@ func (svc *BatchRankingService) topN(ctx context.Context) ([]domain.Article, err
 			func(idx int, src domain.Article) int64 {
 				return src.Id
 			})
-		intrs, err := svc.intr.GetByIds(ctx, "articles", ids)
+		intrs, err := svc.intr.GetByIds(ctx, &intrv1.GetByIdRequest{
+			Biz:    "article",
+			BizIds: ids,
+		})
 		if err != nil {
 			return nil, err
 		}
+		if len(intrs.Intrs) == 0 {
+			return nil, errors.New("没有数据")
+		}
 		for _, art := range arts {
-			intr := intrs[art.Id]
+			intr := intrs.Intrs[art.Id]
 			score := svc.scoreFunc(art.Utime, intr.LikeCnt)
 			err = topN.Enqueue(Score{
 				art:   art,

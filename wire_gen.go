@@ -8,6 +8,11 @@ package main
 
 import (
 	"github.com/google/wire"
+	"github.com/rwpp/RzWeLook/interactive/events"
+	repository2 "github.com/rwpp/RzWeLook/interactive/repository"
+	cache2 "github.com/rwpp/RzWeLook/interactive/repository/cache"
+	dao2 "github.com/rwpp/RzWeLook/interactive/repository/dao"
+	service2 "github.com/rwpp/RzWeLook/interactive/service"
 	"github.com/rwpp/RzWeLook/internal/events/article"
 	"github.com/rwpp/RzWeLook/internal/ioc"
 	"github.com/rwpp/RzWeLook/internal/repository"
@@ -45,18 +50,21 @@ func InitApp() *App {
 	syncProducer := ioc.NewSyncProducer(client)
 	producer := article.NewKafkaProducer(syncProducer)
 	articleService := service.NewArticleService(articleRepository, loggerV1, producer)
-	interactiveDAO := dao.NewGORMInteractiveDAO(db)
-	interactiveCache := cache.NewRedisInteractiveCache(cmdable)
-	interactiveRepository := repository.NewCachedInteractiveRepository(interactiveDAO, interactiveCache, loggerV1)
-	interactiveService := service.NewInteractiveService(interactiveRepository, loggerV1)
-	articleHandler := web.NewArticleHandler(articleService, interactiveService, loggerV1)
+	interactiveDAO := dao2.NewGORMInteractiveDAO(db)
+	interactiveCache := cache2.NewRedisInteractiveCache(cmdable)
+	interactiveRepository := repository2.NewCachedInteractiveRepository(interactiveDAO, interactiveCache, loggerV1)
+	interactiveService := service2.NewInteractiveService(interactiveRepository, loggerV1)
+	interactiveServiceClient := ioc.InitIntrGRPCClient(interactiveService)
+	articleHandler := web.NewArticleHandler(articleService, interactiveServiceClient, loggerV1)
 	engine := ioc.InitWeb(v, userHandler, oAuthWechatHandler, articleHandler)
-	interactiveReadEventConsumer := article.NewInteractiveReadEventConsumer(client, interactiveRepository, loggerV1)
+	interactiveReadEventConsumer := events.NewInteractiveReadEventConsumer(client, interactiveRepository, loggerV1)
 	v2 := ioc.NewConsumers(interactiveReadEventConsumer)
 	rankingCache := cache.NewRankingCache(cmdable)
-	rankingRepository := repository.NewRankingRepository(rankingCache)
-	rankingService := service.NewRankingService(articleService, interactiveService, rankingRepository)
-	rankingJob := ioc.InitRankingJob(rankingService)
+	rankingLocalCache := cache.NewRankingLocalCache()
+	rankingRepository := repository.NewRankingRepository(rankingCache, rankingLocalCache)
+	rankingService := service.NewRankingService(articleService, interactiveServiceClient, rankingRepository)
+	rlockClient := ioc.InitRLockClient(cmdable)
+	rankingJob := ioc.InitRankingJob(rankingService, rlockClient, loggerV1)
 	cron := ioc.InitJobs(loggerV1, rankingJob)
 	app := &App{
 		web:       engine,
@@ -68,4 +76,6 @@ func InitApp() *App {
 
 // wire.go:
 
-var rankingServiceSet = wire.NewSet(repository.NewRankingRepository, cache.NewRankingCache, service.NewRankingService)
+var interactiveSvcProvider = wire.NewSet(service2.NewInteractiveService, repository2.NewCachedInteractiveRepository, dao2.NewGORMInteractiveDAO, cache2.NewRedisInteractiveCache)
+
+var rankingServiceSet = wire.NewSet(cache.NewRankingCache, cache.NewRankingLocalCache, repository.NewRankingRepository, service.NewRankingService)
