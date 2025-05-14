@@ -13,7 +13,7 @@ import (
 	reflect "reflect"
 	time "time"
 
-	domain "gitee.com/geekbang/basic-go/webook/payment/domain"
+	domain "github.com/rwpp/RzWeLook/payment/domain"
 	gomock "go.uber.org/mock/gomock"
 )
 

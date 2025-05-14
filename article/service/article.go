@@ -2,9 +2,9 @@ package service
 
 import (
 	"context"
-	"github.com/rwpp/RzWeLook/internal/domain"
-	events "github.com/rwpp/RzWeLook/internal/events/article"
-	"github.com/rwpp/RzWeLook/internal/repository"
+	"github.com/rwpp/RzWeLook/article/domain"
+	events "github.com/rwpp/RzWeLook/article/events"
+	"github.com/rwpp/RzWeLook/article/repository"
 	"github.com/rwpp/RzWeLook/pkg/logger"
 	"golang.org/x/sync/errgroup"
 	"time"
@@ -106,12 +106,10 @@ func (svc *articleService) GetPublishedById(ctx context.Context, id, uid int64) 
 	res := *art
 	go func() {
 		if err == nil {
-			er := svc.producer.ProduceReadEvent(
-				ctx,
-				events.ReadEvent{
-					Uid: uid,
-					Aid: id,
-				})
+			er := svc.producer.ProduceReadEvent(events.ReadEvent{
+				Aid: id,
+				Uid: id,
+			})
 			if er != nil {
 				svc.logger.Error("发送消息失败",
 					logger.Int64("uid", uid),
