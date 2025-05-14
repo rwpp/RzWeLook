@@ -12,7 +12,6 @@ import (
 	cache2 "github.com/rwpp/RzWeLook/interactive/repository/cache"
 	dao2 "github.com/rwpp/RzWeLook/interactive/repository/dao"
 	service2 "github.com/rwpp/RzWeLook/interactive/service"
-	"github.com/rwpp/RzWeLook/internal/events/article"
 	"github.com/rwpp/RzWeLook/internal/ioc"
 	"github.com/rwpp/RzWeLook/internal/repository"
 	"github.com/rwpp/RzWeLook/internal/repository/cache"

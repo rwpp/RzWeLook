@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 	"errors"
-	"github.com/rwpp/RzWeLook/internal/domain"
-	"github.com/rwpp/RzWeLook/internal/repository"
+	"github.com/rwpp/RzWeLook/user/domain"
+	"github.com/rwpp/RzWeLook/user/repository"
 	"golang.org/x/crypto/bcrypt"
 )
 

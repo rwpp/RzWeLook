@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
-	"github.com/rwpp/RzWeLook/internal/repository"
-	"github.com/rwpp/RzWeLook/internal/service/sms"
+	smsv1 "github.com/rwpp/RzWeLook/api/proto/gen/sms/v1"
+	"github.com/rwpp/RzWeLook/code/repository"
 	"math/rand"
 )
 
@@ -20,7 +20,7 @@ type CodeServiceInterface interface {
 	Verify(ctx context.Context, biz string, phone string, inputCode string) (bool, error)
 }
 
-func NewCodeService(repo repository.CodeRepositoryInterface, smsSvc sms.Service) CodeServiceInterface {
+func NewCodeService(repo repository.CodeRepositoryInterface, smsSvc smsv1.SmsServiceClient) CodeServiceInterface {
 	return &CodeService{
 		repo:   repo,
 		smsSvc: smsSvc,
@@ -29,7 +29,7 @@ func NewCodeService(repo repository.CodeRepositoryInterface, smsSvc sms.Service)
 
 type CodeService struct {
 	repo   repository.CodeRepositoryInterface
-	smsSvc sms.Service
+	smsSvc smsv1.SmsServiceClient
 }
 
 func (svc *CodeService) Send(ctx context.Context, biz string, phone string) error {
@@ -38,7 +38,11 @@ func (svc *CodeService) Send(ctx context.Context, biz string, phone string) erro
 	if err != nil {
 		return err
 	}
-	err = svc.smsSvc.Send(ctx, codeTpId, []string{code}, phone)
+	_, err = svc.smsSvc.Send(ctx, &smsv1.SmsSendRequest{
+		TplId:   codeTpId,
+		Args:    []string{code},
+		Numbers: []string{phone},
+	})
 	return err
 }
 

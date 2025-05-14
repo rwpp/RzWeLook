@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/redis/go-redis/v9"
-	"github.com/rwpp/RzWeLook/internal/domain"
+	"github.com/rwpp/RzWeLook/user/domain"
 	"time"
 )
 

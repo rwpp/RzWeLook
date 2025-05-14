@@ -1,18 +1,19 @@
 package web
 
 import (
-	"errors"
 	"fmt"
 	regexp "github.com/dlclark/regexp2"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
-	"github.com/rwpp/RzWeLook/internal/domain"
-	"github.com/rwpp/RzWeLook/internal/service"
+	codev1 "github.com/rwpp/RzWeLook/api/proto/gen/code/v1"
+	userv1 "github.com/rwpp/RzWeLook/api/proto/gen/user/v1"
 	ijwt "github.com/rwpp/RzWeLook/internal/web/jwt"
 	"github.com/rwpp/RzWeLook/pkg/ginx"
 	"github.com/rwpp/RzWeLook/pkg/logger"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"log"
 	"net/http"
 	"time"
@@ -26,14 +27,14 @@ var _ handler = &UserHandler{}
 type UserHandler struct {
 	emailExp    *regexp.Regexp
 	passwordExp *regexp.Regexp
-	svc         service.UserService
-	codeSvc     service.CodeServiceInterface
+	svc         userv1.UserServiceClient
+	codeSvc     codev1.CodeServiceClient
 	ijwt.Handler
 	cmd redis.Cmdable
 	l   logger.LoggerV1
 }
 
-func NewUserHandler(svc service.UserService, codeSvc service.CodeServiceInterface,
+func NewUserHandler(svc userv1.UserServiceClient, codeSvc codev1.CodeServiceClient,
 	jwtHdl ijwt.Handler,
 	l logger.LoggerV1) *UserHandler {
 	const (
@@ -113,17 +114,20 @@ func (u *UserHandler) SendLoginSMSCode(ctx *gin.Context) {
 		return
 	}
 
-	err := u.codeSvc.Send(ctx, biz, req.Phone)
+	_, err := u.codeSvc.Send(ctx, &codev1.CodeSendRequest{
+		Biz: biz, Phone: req.Phone,
+	})
 	switch err {
 	case nil:
 		ctx.JSON(http.StatusOK, Result{
 			Msg: "发送成功",
 		})
-	case service.ErrCodeSendTooMany:
-		ctx.JSON(http.StatusOK, Result{
-			Code: 4,
-			Msg:  "发送验证码过于频繁",
-		})
+		//TODO:用grpc传递错误码
+	//case service.ErrCodeSendTooMany:
+	//	ctx.JSON(http.StatusOK, Result{
+	//		Code: 4,
+	//		Msg:  "发送验证码过于频繁",
+	//	})
 	default:
 		ctx.JSON(http.StatusOK, Result{
 			Code: 5,
@@ -140,7 +144,6 @@ func (u *UserHandler) SignUp(ctx *gin.Context) {
 	}
 	var req SignUpReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "请求参数错误"})
 		return
 	}
@@ -168,14 +171,13 @@ func (u *UserHandler) SignUp(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{"error": "密码格式错误"})
 		return
 	}
-	err = u.svc.SignUp(ctx.Request.Context(), domain.User{
-		Email:    req.Email,
-		Password: req.Password,
-	})
-	if errors.Is(err, service.ErrUserDuplicate) {
-		ctx.JSON(http.StatusOK, gin.H{"error": "邮箱已被注册"})
-		return
-	}
+	_, err = u.svc.Signup(ctx.Request.Context(),
+		&userv1.SignupRequest{User: &userv1.User{Email: req.Email,
+			Password: req.ConfirmPassword}})
+	//if errors.Is(err, service.ErrUserDuplicate) {
+	//	ctx.JSON(http.StatusOK, gin.H{"error": "邮箱已被注册"})
+	//	return
+	//}
 	if err != nil {
 		ctx.JSON(http.StatusOK, gin.H{"error": "系统异常"})
 		return
@@ -183,55 +185,55 @@ func (u *UserHandler) SignUp(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"message": "注册成功"})
 }
 
-func (u *UserHandler) Login(ctx *gin.Context) {
-	type LoginReq struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-	var req LoginReq
-	if err := ctx.Bind(&req); err != nil {
-		return
-	}
-	user, err := u.svc.Login(ctx, req.Email, req.Password)
-	if err == service.ErrInvalidUserOrPassword {
-		ctx.String(http.StatusOK, "账号或密码错误")
-		return
-	}
-	if err != nil {
-		ctx.String(http.StatusOK, "系统异常")
-		return
-	}
-	sess := sessions.Default(ctx)
-	sess.Set("userId", user.Id)
-	sess.Options(sessions.Options{
-		//Secure:   true,
-		//HttpOnly: true,
-		MaxAge: 60 * 30,
-	})
-	sess.Save()
-	ctx.String(http.StatusOK, "登录成功")
-	return
-}
+//func (u *UserHandler) Login(ctx *gin.Context) {
+//	type LoginReq struct {
+//		Email    string `json:"email"`
+//		Password string `json:"password"`
+//	}
+//	var req LoginReq
+//	if err := ctx.Bind(&req); err != nil {
+//		return
+//	}
+//	user, err := u.svc.Login(ctx, req.Email, req.Password)
+//	if err == service.ErrInvalidUserOrPassword {
+//		ctx.String(http.StatusOK, "账号或密码错误")
+//		return
+//	}
+//	if err != nil {
+//		ctx.String(http.StatusOK, "系统异常")
+//		return
+//	}
+//	sess := sessions.Default(ctx)
+//	sess.Set("userId", user.Id)
+//	sess.Options(sessions.Options{
+//		//Secure:   true,
+//		//HttpOnly: true,
+//		MaxAge: 60 * 30,
+//	})
+//	sess.Save()
+//	ctx.String(http.StatusOK, "登录成功")
+//	return
+//}
 
-func (u *UserHandler) Profile(ctx *gin.Context) {
-	type Profile struct {
-		Email string `json:"email"`
-	}
-	sess := sessions.Default(ctx)
-	id := sess.Get(userIdKey).(int64)
-	ux, err := u.svc.Profile(ctx, id)
-	if err != nil {
-		ctx.JSON(http.StatusOK, Result{
-			Code: 1,
-			Msg:  "系统错误",
-		})
-		return
-	}
-	ctx.JSON(http.StatusOK, Profile{
-		Email: ux.Email,
-	})
-
-}
+//	func (u *UserHandler) Profile(ctx *gin.Context) {
+//		type Profile struct {
+//			Email string `json:"email"`
+//		}
+//		sess := sessions.Default(ctx)
+//		id := sess.Get(userIdKey).(int64)
+//		ux, err := u.svc.Profile(ctx, id)
+//		if err != nil {
+//			ctx.JSON(http.StatusOK, Result{
+//				Code: 1,
+//				Msg:  "系统错误",
+//			})
+//			return
+//		}
+//		ctx.JSON(http.StatusOK, Profile{
+//			Email: ux.Email,
+//		})
+//
+// }
 func (u *UserHandler) Edit(ctx *gin.Context) {
 	type Req struct {
 		Nickname string `json:"nickname"`
@@ -268,11 +270,13 @@ func (u *UserHandler) Edit(ctx *gin.Context) {
 		return
 	}
 	uc := ctx.MustGet("users").(ijwt.UserClaims)
-	err = u.svc.UpdateNonSensitiveInfo(ctx, domain.User{
-		Id:       uc.Uid,
-		Nickname: req.Nickname,
-		Birthday: birthday,
-		AboutMe:  req.AboutMe,
+	_, err = u.svc.UpdateNonSensitiveInfo(ctx, &userv1.UpdateNonSensitiveInfoRequest{
+		User: &userv1.User{
+			Id:       uc.Uid,
+			Nickname: req.Nickname,
+			AboutMe:  req.AboutMe,
+			Birthday: timestamppb.New(birthday),
+		},
 	})
 	if err != nil {
 		ctx.JSON(http.StatusOK, Result{
@@ -301,17 +305,19 @@ func (u *UserHandler) LoginJWT(ctx *gin.Context) {
 	if err := ctx.Bind(&req); err != nil {
 		return
 	}
-	user, err := u.svc.Login(ctx, req.Email, req.Password)
-	if err == service.ErrInvalidUserOrPassword {
-		ctx.String(http.StatusOK, "账号或密码错误")
-		return
-	}
+	user, err := u.svc.Login(ctx, &userv1.LoginRequest{
+		Email: req.Email, Password: req.Password,
+	})
+	//if err == service.ErrInvalidUserOrPassword {
+	//	ctx.String(http.StatusOK, "账号或密码错误")
+	//	return
+	//}
 	if err != nil {
 		ctx.String(http.StatusOK, "系统异常")
 		return
 	}
 
-	if err = u.SetLoginToken(ctx, user.Id); err != nil {
+	if err = u.SetLoginToken(ctx, user.User.Id); err != nil {
 		ctx.String(http.StatusOK, "系统异常")
 		return
 	}
@@ -330,7 +336,7 @@ func (u *UserHandler) ProfileJWT(ctx *gin.Context) {
 	}
 	//ToDo 可能key不对
 	uc := ctx.MustGet("users").(ijwt.UserClaims)
-	ux, err := u.svc.Profile(ctx, uc.Uid)
+	ux, err := u.svc.Profile(ctx, &userv1.ProfileRequest{Id: uc.Uid})
 	if err != nil {
 		ctx.JSON(http.StatusOK, Result{
 			Code: 1,
@@ -338,12 +344,13 @@ func (u *UserHandler) ProfileJWT(ctx *gin.Context) {
 		})
 		return
 	}
+	m := ux.User
 	ctx.JSON(http.StatusOK, Profile{
-		Email:    ux.Email,
-		Phone:    ux.Phone,
-		Nickname: ux.Nickname,
-		Birthday: ux.Birthday.String(),
-		AboutMe:  ux.AboutMe,
+		Email:    m.Email,
+		Phone:    m.Phone,
+		Nickname: m.Nickname,
+		Birthday: m.Birthday.AsTime().Format(time.DateOnly),
+		AboutMe:  m.AboutMe,
 	})
 
 }
@@ -354,14 +361,18 @@ type LoginSMSReq struct {
 }
 
 func (u *UserHandler) LoginSMS(ctx *gin.Context, req LoginSMSReq) (ginx.Result, error) {
-	ok, err := u.codeSvc.Verify(ctx, biz, req.Phone, req.Code)
+	resp, err := u.codeSvc.Verify(ctx, &codev1.VerifyRequest{
+		Biz: biz, Phone: req.Phone, InputCode: req.Code,
+	})
 	if err != nil {
 		return Result{Code: 5, Msg: "系统异常"}, err
 	}
-	if !ok {
+	if resp.Answer {
 		return Result{Code: 5, Msg: "验证码错误"}, nil
 	}
-	user, err := u.svc.FindOrCreate(ctx, req.Phone)
+	m, err := u.svc.FindOrCreate(ctx, &userv1.FindOrCreateRequest{
+		Phone: req.Phone,
+	})
 	if err != nil {
 		ctx.JSON(http.StatusOK, Result{
 			Code: 5,
@@ -369,8 +380,8 @@ func (u *UserHandler) LoginSMS(ctx *gin.Context, req LoginSMSReq) (ginx.Result, 
 		})
 	}
 	//Todo: 这里需要根据手机号查询用户信息
-
-	if err = u.SetLoginToken(ctx, user.Id); err != nil {
+	ssid := uuid.New().String()
+	if err = u.SetJWToken(ctx, m.User.Id, ssid); err != nil {
 		return Result{Code: 5, Msg: "系统异常"}, err
 	}
 	return Result{Msg: "登录成功"}, nil

@@ -28,25 +28,23 @@ func InitEtcd() *clientv3.Client {
 // grpc客户端
 func InitIntrGRPCClientV1(client *clientv3.Client) intrv1.InteractiveServiceClient {
 	type Config struct {
-		Secure bool
-		Name   string
+		Target string `json:"target"`
+		Secure bool   `json:"secure"`
 	}
 	var cfg Config
 	err := viper.UnmarshalKey("grpc.client.intr", &cfg)
 	if err != nil {
 		panic(err)
 	}
-	bd, err := resolver.NewBuilder(client)
+	rs, err := resolver.NewBuilder(client)
 	if err != nil {
 		panic(err)
 	}
-	opts := []grpc.DialOption{grpc.WithResolvers(bd)}
-	if cfg.Secure {
-		//加载证书启动https
-	} else {
+	opts := []grpc.DialOption{grpc.WithResolvers(rs)}
+	if !cfg.Secure {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
-	cc, err := grpc.Dial("etcd:///service/"+cfg.Name, opts...)
+	cc, err := grpc.Dial(cfg.Target, opts...)
 	if err != nil {
 		panic(err)
 	}

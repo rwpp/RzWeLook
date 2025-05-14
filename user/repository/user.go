@@ -6,9 +6,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/rwpp/RzWeLook/internal/domain"
-	"github.com/rwpp/RzWeLook/internal/repository/cache"
-	"github.com/rwpp/RzWeLook/internal/repository/dao"
+	"github.com/rwpp/RzWeLook/user/domain"
+	"github.com/rwpp/RzWeLook/user/repository/cache"
+	"github.com/rwpp/RzWeLook/user/repository/dao"
 )
 
 var (

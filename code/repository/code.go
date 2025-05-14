@@ -2,7 +2,7 @@ package repository
 
 import (
 	"context"
-	"github.com/rwpp/RzWeLook/internal/repository/cache"
+	"github.com/rwpp/RzWeLook/code/repository/cache"
 )
 
 var (
