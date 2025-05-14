@@ -12,12 +12,14 @@ import (
 )
 
 type Validator[T migrator.Entity] struct {
-	base      *gorm.DB
-	target    *gorm.DB
-	l         logger.LoggerV1
-	p         events.Producer
-	direction string
-	batchSize int
+	base          *gorm.DB
+	target        *gorm.DB
+	l             logger.LoggerV1
+	p             events.Producer
+	direction     string
+	batchSize     int
+	utime         int64
+	sleepInterval time.Duration
 }
 
 func NewValidator[T migrator.Entity](base *gorm.DB, target *gorm.DB, l logger.LoggerV1, p events.Producer, direction string, batchSize int) *Validator[T] {
@@ -27,9 +29,25 @@ func NewValidator[T migrator.Entity](base *gorm.DB, target *gorm.DB, l logger.Lo
 		l:         l,
 		p:         p,
 		direction: direction,
-		batchSize: batchSize}
+		batchSize: batchSize,
+	}
 }
 
+// func NewIncrValidator[T migrator.Entity](base *gorm.DB,
+//
+//		target *gorm.DB, l logger.LoggerV1,
+//		p events.Producer, direction string, batchSize int) {
+//		v := newValidator[T](base, target, l, p, direction, batchSize)
+//		v.order = "utime"
+//	}
+//
+// func NewFullValidator[T migrator.Entity](base *gorm.DB,
+//
+//		target *gorm.DB, l logger.LoggerV1,
+//		p events.Producer, direction string, batchSize int) {
+//		v := newValidator[T](base, target, l, p, direction, batchSize)
+//		v.order = "id"
+//	}
 func (v *Validator[T]) validate(ctx context.Context) error {
 	var eg errgroup.Group
 	eg.Go(func() error {
@@ -45,20 +63,21 @@ func (v *Validator[T]) validate(ctx context.Context) error {
 
 // Validate调用者通过ctx来控制校验程序退出
 func (v *Validator[T]) validateBaseToTarget(ctx context.Context) {
-	offset := -1
+	offset := 0
 	for {
 		dbCtx, cancel := context.WithTimeout(ctx, time.Second)
-		offset++
+
 		var src T
-		err := v.base.WithContext(dbCtx).Offset(offset).Order("id").First(&src).Error
+		err := v.base.WithContext(dbCtx).
+			Where("utime>?", v.utime).Offset(offset).
+			Order("utime").First(&src).Error
 		cancel()
 		switch err {
 		case nil:
 			var dst T
-			err := v.target.Where("id = ?", src.ID()).First(&dst).Error
+			err = v.target.Where("id = ?", src.ID()).First(&dst).Error
 			switch err {
 			case nil:
-
 				if !src.CompareTo(dst) {
 					//不相等
 					v.notify(ctx, src.ID(), events.InconsistentEventTypeNEQ)
@@ -67,40 +86,52 @@ func (v *Validator[T]) validateBaseToTarget(ctx context.Context) {
 				v.notify(ctx, src.ID(), events.InconsistentEventTypeTargetMissing)
 			default:
 				v.l.Error("查询数据失败", logger.Error(err))
-				continue
 			}
+
 		case gorm.ErrRecordNotFound:
-			return
+			if v.sleepInterval <= 0 {
+				return
+			}
+			time.Sleep(v.sleepInterval)
+			continue
 		default:
 			v.l.Error("校验数据，查询base失败", logger.Error(err))
-			continue
 			//数据库错误
 		}
-
+		offset++
 	}
 }
 func (v *Validator[T]) validateTargetToBase(ctx context.Context) {
-	offset := -v.batchSize
+	offset := 0
 	for {
-		offset = offset + v.batchSize
 		dbCtx, cancel := context.WithTimeout(ctx, time.Second)
 		var dstTs []T
-		err := v.base.WithContext(dbCtx).
+		err := v.target.WithContext(dbCtx).
+			Where("utime>?", v.utime).
+			Select("id").
 			Offset(offset).Limit(v.batchSize).
-			Order("id").Find(&dstTs).Error
+			Order("utime").Find(&dstTs).Error
 		cancel()
 		if len(dstTs) == 0 {
+			if v.sleepInterval <= 0 {
+				return
+			}
+			time.Sleep(v.sleepInterval)
 			return
 		}
 		switch err {
 		case gorm.ErrRecordNotFound:
-			return
+			if v.sleepInterval <= 0 {
+				return
+			}
+			time.Sleep(v.sleepInterval)
+			continue
 		case nil:
 			ids := slice.Map(dstTs, func(idx int, t T) int64 {
 				return t.ID()
 			})
 			var srcTs []T
-			err = v.target.Where("id IN ?", ids).Find(&srcTs).Error
+			err = v.base.Where("id IN ?", ids).Find(&srcTs).Error
 			switch err {
 			case gorm.ErrRecordNotFound:
 				v.notifyBaseMissing(ctx, ids)
@@ -111,12 +142,19 @@ func (v *Validator[T]) validateTargetToBase(ctx context.Context) {
 				//计算差值
 				diff := slice.DiffSet(ids, srcIds)
 				v.notifyBaseMissing(ctx, diff)
+			default:
+
 			}
 		default:
-			continue
+			v.l.Error("查询target失败", logger.Error(err))
 		}
+		offset += len(dstTs)
 		if len(dstTs) < v.batchSize {
-			return
+			if v.sleepInterval <= 0 {
+				return
+			}
+			time.Sleep(v.sleepInterval)
+
 		}
 	}
 }

@@ -5,7 +5,7 @@ package repository
 //	"context"
 //	"github.com/rwpp/RzWeLook/internal/service"
 //
-//	//userv1 "gitee.com/geekbang/basic-go/webook/api/proto/gen/user/v1"
+//	//userv1 "github.com/rwpp/RzWeLook/api/proto/gen/user/v1"
 //	"github.com/rwpp/RzWeLook/internal/domain"
 //	"github.com/rwpp/RzWeLook/internal/repository/dao"
 //)

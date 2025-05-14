@@ -1,6 +1,13 @@
 db:
-  dsn: "root:root@tcp(localhost:13316)/welook"
+  src:
+    dsn: "root:root@tcp(localhost:13316)/welook"
+  dst:
+    dsn: "root:root@tcp(localhost:13316)/welook_intr"
 
+migrator:
+  pattern: "src_only"
+  web:
+    addr: ":8082"
 redis:
   addr: "localhost:6379"
 
@@ -10,4 +17,7 @@ kafka:
 
 grpc:
   server:
-    addr: ":8090"
+    port: "8090"
+    etcdAddrs:
+      - "localhost:12379"
+

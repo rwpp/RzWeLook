@@ -22,4 +22,5 @@ type UserClaims struct {
 	Uid       int64
 	Ssid      string
 	UserAgent string
+	VIP       bool
 }

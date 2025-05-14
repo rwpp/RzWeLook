@@ -4,7 +4,6 @@ package main
 
 import (
 	"github.com/google/wire"
-	"github.com/rwpp/RzWeLook/interactive/events"
 	repository2 "github.com/rwpp/RzWeLook/interactive/repository"
 	cache2 "github.com/rwpp/RzWeLook/interactive/repository/cache"
 	dao2 "github.com/rwpp/RzWeLook/interactive/repository/dao"
@@ -40,13 +39,15 @@ func InitApp() *App {
 		ioc.InitKafka,
 		ioc.NewConsumers,
 		ioc.NewSyncProducer,
-		interactiveSvcProvider,
-		ioc.InitIntrGRPCClient,
+		//interactiveSvcProvider,
+		//ioc.InitIntrGRPCClient,
+		ioc.InitEtcd,
+		ioc.InitIntrGRPCClientV1,
 		rankingServiceSet,
 		ioc.InitJobs,
 		ioc.InitRankingJob,
 
-		events.NewInteractiveReadEventConsumer,
+		//events.NewInteractiveReadEventConsumer,
 		article.NewKafkaProducer,
 
 		dao.NewUserDAO,

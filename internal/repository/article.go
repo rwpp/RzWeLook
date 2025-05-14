@@ -119,8 +119,7 @@ func (repo *CachedArticleRepository) GetById(ctx context.Context, id int64) (dom
 	return repo.ToDomain(art), nil
 }
 
-func (repo *CachedArticleRepository) List(ctx context.Context, author int64,
-	offset int, limit int) ([]domain.Article, error) {
+func (repo *CachedArticleRepository) List(ctx context.Context, author int64, offset int, limit int) ([]domain.Article, error) {
 	// 只有第一页才走缓存，并且假定一页只有 100 条
 	// 也就是说，如果前端允许创作者调整页的大小
 	// 那么只有 100 这个页大小这个默认情况下，会走索引

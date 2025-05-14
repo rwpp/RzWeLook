@@ -267,7 +267,7 @@ func (u *UserHandler) Edit(ctx *gin.Context) {
 		})
 		return
 	}
-	uc := ctx.MustGet("user").(ijwt.UserClaims)
+	uc := ctx.MustGet("users").(ijwt.UserClaims)
 	err = u.svc.UpdateNonSensitiveInfo(ctx, domain.User{
 		Id:       uc.Uid,
 		Nickname: req.Nickname,

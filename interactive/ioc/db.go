@@ -3,13 +3,39 @@ package ioc
 import (
 	promsdk "github.com/prometheus/client_golang/prometheus"
 	dao2 "github.com/rwpp/RzWeLook/interactive/repository/dao"
+	"github.com/rwpp/RzWeLook/pkg/gormx/connpool"
+	"github.com/rwpp/RzWeLook/pkg/logger"
 	"github.com/spf13/viper"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"time"
 )
 
-func InitDB() *gorm.DB {
+func InitSrc(l logger.LoggerV1) SrcDB {
+	return initDB(l, "src")
+}
+func InitDst(l logger.LoggerV1) DstDB {
+	return initDB(l, "dst")
+}
+func InitDoubleWritePool(src SrcDB, dst DstDB) *connpool.DoubleWritePool {
+	pattern := viper.GetString("migrator.pattern")
+	return connpool.NewDoubleWritePool(src.ConnPool, dst.ConnPool, pattern)
+}
+
+func InitBizDB(pool *connpool.DoubleWritePool) *gorm.DB {
+	db, err := gorm.Open(mysql.New(mysql.Config{
+		Conn: pool,
+	}))
+	if err != nil {
+		panic(err)
+	}
+	return db
+}
+
+type SrcDB *gorm.DB
+type DstDB *gorm.DB
+
+func initDB(l logger.LoggerV1, key string) *gorm.DB {
 	type Config struct {
 		DSN string `yaml:"dsn"`
 	}
@@ -17,11 +43,16 @@ func InitDB() *gorm.DB {
 		DSN: "root:root@tcp(localhost:13316)/welook",
 	}
 
-	err := viper.UnmarshalKey("db", &cfg)
+	err := viper.UnmarshalKey("db."+key, &cfg)
 	if err != nil {
 		panic(err)
 	}
 	db, err := gorm.Open(mysql.Open(cfg.DSN))
+	if err != nil {
+		panic(err)
+	}
+	cb := newCallbacks(key)
+	err = db.Use(cb)
 	if err != nil {
 		panic(err)
 	}
@@ -48,11 +79,11 @@ func (pcb *Callbacks) Initialize(db *gorm.DB) error {
 	return nil
 }
 
-func newCallbacks() *Callbacks {
+func newCallbacks(key string) *Callbacks {
 	vector := promsdk.NewSummaryVec(promsdk.SummaryOpts{
 		Namespace: "RzWeLook",
 		Subsystem: "web",
-		Name:      "gorm_sql_time",
+		Name:      "gorm_sql_time" + key,
 		Help:      "统计gorm执行时间",
 		ConstLabels: map[string]string{
 			"db": "welook",

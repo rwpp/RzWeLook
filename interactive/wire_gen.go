@@ -20,27 +20,37 @@ import (
 // Injectors from wire.go:
 
 func InitApp() *App {
-	db := ioc.InitDB()
+	loggerV1 := ioc.InitLogger()
+	srcDB := ioc.InitSrc(loggerV1)
+	dstDB := ioc.InitDst(loggerV1)
+	doubleWritePool := ioc.InitDoubleWritePool(srcDB, dstDB)
+	db := ioc.InitBizDB(doubleWritePool)
 	interactiveDAO := dao.NewGORMInteractiveDAO(db)
 	cmdable := ioc.InitRedis()
 	interactiveCache := cache.NewRedisInteractiveCache(cmdable)
-	loggerV1 := ioc.InitLogger()
 	interactiveRepository := repository.NewCachedInteractiveRepository(interactiveDAO, interactiveCache, loggerV1)
 	interactiveService := service.NewInteractiveService(interactiveRepository, loggerV1)
 	interactiveServiceServer := grpc.NewInteractiveServiceServer(interactiveService)
-	server := ioc.InitGRPCxServer(interactiveServiceServer)
+	server := ioc.InitGRPCxServer(loggerV1, interactiveServiceServer)
 	client := ioc.InitKafka()
 	interactiveReadEventConsumer := events.NewInteractiveReadEventConsumer(client, interactiveRepository, loggerV1)
-	v := ioc.NewConsumers(interactiveReadEventConsumer)
+	consumer := ioc.InitFixDataConsumer(loggerV1, srcDB, dstDB, client)
+	v := ioc.NewConsumers(interactiveReadEventConsumer, consumer)
+	syncProducer := ioc.InitSyncProducer(client)
+	producer := ioc.InitMigradatorProducer(syncProducer)
+	ginxServer := ioc.InitMigratorServer(loggerV1, srcDB, dstDB, doubleWritePool, producer)
 	app := &App{
 		server:    server,
 		consumers: v,
+		webAdmin:  ginxServer,
 	}
 	return app
 }
 
 // wire.go:
 
-var thirdPartySet = wire.NewSet(ioc.InitDB, ioc.InitRedis, ioc.InitKafka, ioc.InitLogger)
+var thirdPartySet = wire.NewSet(ioc.InitDst, ioc.InitSrc, ioc.InitDoubleWritePool, ioc.InitBizDB, ioc.InitRedis, ioc.InitKafka, ioc.InitSyncProducer, ioc.InitLogger)
 
 var interactiveSvcProvider = wire.NewSet(service.NewInteractiveService, repository.NewCachedInteractiveRepository, dao.NewGORMInteractiveDAO, cache.NewRedisInteractiveCache)
+
+var migratorProvider = wire.NewSet(ioc.InitMigratorServer, ioc.InitFixDataConsumer, ioc.InitMigradatorProducer)

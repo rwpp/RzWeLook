@@ -2,7 +2,6 @@ package ioc
 
 import (
 	"github.com/IBM/sarama"
-	"github.com/rwpp/RzWeLook/interactive/events"
 	"github.com/rwpp/RzWeLook/pkg/saramax"
 	"github.com/spf13/viper"
 )
@@ -35,6 +34,6 @@ func NewSyncProducer(client sarama.Client) sarama.SyncProducer {
 	}
 	return producer
 }
-func NewConsumers(client *events.InteractiveReadEventConsumer) []saramax.Consumer {
-	return []saramax.Consumer{client}
+func NewConsumers() []saramax.Consumer {
+	return []saramax.Consumer{}
 }

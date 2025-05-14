@@ -3,6 +3,8 @@ package ioc
 import (
 	"github.com/IBM/sarama"
 	"github.com/rwpp/RzWeLook/interactive/events"
+	"github.com/rwpp/RzWeLook/interactive/repository/dao"
+	"github.com/rwpp/RzWeLook/pkg/migrator/events/fixer"
 	"github.com/rwpp/RzWeLook/pkg/saramax"
 	"github.com/spf13/viper"
 )
@@ -26,6 +28,20 @@ func InitKafka() sarama.Client {
 	return client
 }
 
-func NewConsumers(client *events.InteractiveReadEventConsumer) []saramax.Consumer {
-	return []saramax.Consumer{client}
+func InitSyncProducer(client sarama.Client) sarama.SyncProducer {
+	res, err := sarama.NewSyncProducerFromClient(client)
+	if err != nil {
+		panic(err)
+	}
+	return res
+}
+
+// NewConsumers 面临的问题依旧是所有的 Consumer 在这里注册一下
+func NewConsumers(intr *events.InteractiveReadEventConsumer,
+	fix *fixer.Consumer[dao.Interactive],
+) []saramax.Consumer {
+	return []saramax.Consumer{
+		intr,
+		fix,
+	}
 }

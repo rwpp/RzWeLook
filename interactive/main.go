@@ -17,6 +17,10 @@ func main() {
 			panic(err)
 		}
 	}
+	go func() {
+		err := app.webAdmin.Start()
+		log.Println("web admin start err:", err)
+	}()
 	err := app.server.Serve()
 	log.Println(err)
 }
@@ -28,11 +32,10 @@ func initViper() {
 	if err != nil {
 		panic(err)
 	}
-
 }
 func initViperV1() {
 	cfile := pflag.String("config",
-		"config/config.yaml", "指定配置文件路径")
+		"config/dev.yaml", "指定配置文件路径")
 	pflag.Parse()
 	viper.SetConfigFile(*cfile)
 	// 实时监听配置变更

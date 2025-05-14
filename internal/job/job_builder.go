@@ -33,12 +33,12 @@ func NewCronJobBuilder(l logger.LoggerV1) *CronJobBuilder {
 }
 func (b *CronJobBuilder) Build(job Job) cron.Job {
 	name := job.Name()
-	b.l.Error("cron job %s failed: %v",
-		logger.String("name", name))
 	return cronJobFuncAdapter(func() error {
 		_, span := b.tracer.Start(context.Background(), name)
 		defer span.End()
 		start := time.Now()
+		b.l.Info("任务开始",
+			logger.String("job", name))
 		var success bool
 		defer func() {
 			b.l.Error("任务结束",

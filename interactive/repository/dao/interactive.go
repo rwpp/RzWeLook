@@ -2,6 +2,7 @@ package dao
 
 import (
 	"context"
+	"github.com/rwpp/RzWeLook/pkg/migrator"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"time"
@@ -195,6 +196,11 @@ type Interactive struct {
 	LikeCnt    int64
 	Ctime      int64
 	Utime      int64
+}
+
+func (i Interactive) CompareTo(dst migrator.Entity) bool {
+	dstVal, ok := dst.(Interactive)
+	return ok && i == dstVal
 }
 
 func (i Interactive) ID() int64 {
