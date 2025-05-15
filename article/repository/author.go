@@ -3,11 +3,11 @@ package repository
 //
 //import (
 //	"context"
-//	"github.com/rwpp/RzWeLook/internal/service"
+//	"github.com/rwpp/RzWeLook/bff/service"
 //
 //	//userv1 "github.com/rwpp/RzWeLook/api/proto/gen/user/v1"
-//	"github.com/rwpp/RzWeLook/internal/domain"
-//	"github.com/rwpp/RzWeLook/internal/repository/dao"
+//	"github.com/rwpp/RzWeLook/bff/domain"
+//	"github.com/rwpp/RzWeLook/bff/repository/dao"
 //)
 //
 //// AuthorRepository 封装user的client用于获取用户信息

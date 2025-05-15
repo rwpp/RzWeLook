@@ -10,7 +10,7 @@ import (
 
 func main() {
 	initViperV1()
-	app := InitApp()
+	app := Init()
 	for _, c := range app.consumers {
 		err := c.Start()
 		if err != nil {

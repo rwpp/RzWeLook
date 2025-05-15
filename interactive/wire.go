@@ -13,36 +13,39 @@ import (
 	"github.com/rwpp/RzWeLook/interactive/service"
 )
 
-var thirdPartySet = wire.NewSet(
-	ioc.InitDst,
+var serviceProviderSet = wire.NewSet(
+	dao.NewGORMInteractiveDAO,
+	cache.NewRedisInteractiveCache,
+	repository.NewCachedInteractiveRepository,
+	service.NewInteractiveService)
+
+var thirdProvider = wire.NewSet(
 	ioc.InitSrc,
+	ioc.InitDst,
 	ioc.InitDoubleWritePool,
 	ioc.InitBizDB,
 	ioc.InitRedis,
-	ioc.InitKafka,
-	ioc.InitSyncProducer,
 	ioc.InitLogger,
+	ioc.InitKafka,
+	ioc.InitEtcdClient,
+	ioc.InitSyncProducer,
 )
-var interactiveSvcProvider = wire.NewSet(
-	service.NewInteractiveService,
-	repository.NewCachedInteractiveRepository,
-	dao.NewGORMInteractiveDAO,
-	cache.NewRedisInteractiveCache,
-)
-var migratorProvider = wire.NewSet(
+
+var migratorSet = wire.NewSet(
 	ioc.InitMigratorServer,
 	ioc.InitFixDataConsumer,
 	ioc.InitMigradatorProducer)
 
-func InitApp() *App {
-	wire.Build(interactiveSvcProvider,
-		thirdPartySet,
-		migratorProvider,
-		events.NewInteractiveReadEventConsumer,
+func Init() *App {
+	wire.Build(
+		thirdProvider,
+		serviceProviderSet,
+		migratorSet,
 		grpc.NewInteractiveServiceServer,
-		ioc.NewConsumers,
-
+		events.NewInteractiveReadEventConsumer,
 		ioc.InitGRPCxServer,
-		wire.Struct(new(App), "*"))
+		ioc.NewConsumers,
+		wire.Struct(new(App), "*"),
+	)
 	return new(App)
 }

@@ -16,21 +16,15 @@ func InitDB(l logger.LoggerV1) *gorm.DB {
 	type Config struct {
 		DSN string `yaml:"dsn"`
 	}
-	c := Config{
-		DSN: "root:root@tcp(localhost:3306)/mysql",
+	var cfg Config = Config{
+		DSN: "root:root@tcp(localhost:13316)/welook",
 	}
-	err := viper.UnmarshalKey("db", &c)
+
+	err := viper.UnmarshalKey("db", &cfg)
 	if err != nil {
-		panic(fmt.Errorf("初始化配置失败 %v1, 原因 %w", c, err))
+		panic(fmt.Errorf("初始化配置失败 %v1, 原因 %w", cfg, err))
 	}
-	db, err := gorm.Open(mysql.Open(c.DSN), &gorm.Config{
-		// 使用 DEBUG 来打印
-		//Logger: glogger.New(gormLoggerFunc(l.Debug),
-		//	glogger.Config{
-		//		SlowThreshold: 0,
-		//		LogLevel:      glogger.Info,
-		//	}),
-	})
+	db, err := gorm.Open(mysql.Open(cfg.DSN))
 	if err != nil {
 		panic(err)
 	}

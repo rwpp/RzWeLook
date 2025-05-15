@@ -19,8 +19,9 @@ import (
 
 // Injectors from wire.go:
 
-func InitApp() *App {
+func Init() *App {
 	loggerV1 := ioc.InitLogger()
+	client := ioc.InitEtcdClient()
 	srcDB := ioc.InitSrc(loggerV1)
 	dstDB := ioc.InitDst(loggerV1)
 	doubleWritePool := ioc.InitDoubleWritePool(srcDB, dstDB)
@@ -31,12 +32,12 @@ func InitApp() *App {
 	interactiveRepository := repository.NewCachedInteractiveRepository(interactiveDAO, interactiveCache, loggerV1)
 	interactiveService := service.NewInteractiveService(interactiveRepository, loggerV1)
 	interactiveServiceServer := grpc.NewInteractiveServiceServer(interactiveService)
-	server := ioc.InitGRPCxServer(loggerV1, interactiveServiceServer)
-	client := ioc.InitKafka()
-	interactiveReadEventConsumer := events.NewInteractiveReadEventConsumer(client, interactiveRepository, loggerV1)
-	consumer := ioc.InitFixDataConsumer(loggerV1, srcDB, dstDB, client)
+	server := ioc.InitGRPCxServer(loggerV1, client, interactiveServiceServer)
+	saramaClient := ioc.InitKafka()
+	interactiveReadEventConsumer := events.NewInteractiveReadEventConsumer(saramaClient, interactiveRepository, loggerV1)
+	consumer := ioc.InitFixDataConsumer(loggerV1, srcDB, dstDB, saramaClient)
 	v := ioc.NewConsumers(interactiveReadEventConsumer, consumer)
-	syncProducer := ioc.InitSyncProducer(client)
+	syncProducer := ioc.InitSyncProducer(saramaClient)
 	producer := ioc.InitMigradatorProducer(syncProducer)
 	ginxServer := ioc.InitMigratorServer(loggerV1, srcDB, dstDB, doubleWritePool, producer)
 	app := &App{
@@ -49,8 +50,8 @@ func InitApp() *App {
 
 // wire.go:
 
-var thirdPartySet = wire.NewSet(ioc.InitDst, ioc.InitSrc, ioc.InitDoubleWritePool, ioc.InitBizDB, ioc.InitRedis, ioc.InitKafka, ioc.InitSyncProducer, ioc.InitLogger)
+var serviceProviderSet = wire.NewSet(dao.NewGORMInteractiveDAO, cache.NewRedisInteractiveCache, repository.NewCachedInteractiveRepository, service.NewInteractiveService)
 
-var interactiveSvcProvider = wire.NewSet(service.NewInteractiveService, repository.NewCachedInteractiveRepository, dao.NewGORMInteractiveDAO, cache.NewRedisInteractiveCache)
+var thirdProvider = wire.NewSet(ioc.InitSrc, ioc.InitDst, ioc.InitDoubleWritePool, ioc.InitBizDB, ioc.InitRedis, ioc.InitLogger, ioc.InitKafka, ioc.InitEtcdClient, ioc.InitSyncProducer)
 
-var migratorProvider = wire.NewSet(ioc.InitMigratorServer, ioc.InitFixDataConsumer, ioc.InitMigradatorProducer)
+var migratorSet = wire.NewSet(ioc.InitMigratorServer, ioc.InitFixDataConsumer, ioc.InitMigradatorProducer)
